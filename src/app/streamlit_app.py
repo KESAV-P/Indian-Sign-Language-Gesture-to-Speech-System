@@ -11,7 +11,10 @@ import tempfile
 import cv2
 import numpy as np
 import streamlit as st
-import mediapipe as mp
+try:
+    import mediapipe.python as mp
+except ImportError:
+    import mediapipe as mp
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if PROJECT_ROOT not in sys.path:

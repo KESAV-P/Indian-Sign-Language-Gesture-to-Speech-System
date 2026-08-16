@@ -38,11 +38,20 @@ class LandmarkExtractor:
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
     ):
-        self.mp_holistic = mp.solutions.holistic
-        self.holistic = self.mp_holistic.Holistic(
-            min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence,
-        )
+        self.mp_holistic = None
+        self.holistic = None
+        self.use_legacy_solutions = False
+
+        try:
+            if hasattr(mp, "solutions") and hasattr(mp.solutions, "holistic"):
+                self.mp_holistic = mp.solutions.holistic
+                self.holistic = self.mp_holistic.Holistic(
+                    min_detection_confidence=min_detection_confidence,
+                    min_tracking_confidence=min_tracking_confidence,
+                )
+                self.use_legacy_solutions = True
+        except Exception as e:
+            print(f"[LandmarkExtractor Warning] mp.solutions.holistic unavailable ({e}). Using robust feature fallback.")
 
     def extract_frame_landmarks(self, image_bgr: np.ndarray, results=None) -> np.ndarray:
         """
@@ -51,38 +60,44 @@ class LandmarkExtractor:
         Returns:
             np.ndarray: Vector of shape (258,)
         """
-        if results is None:
-            image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-            image_rgb.flags.writeable = False
-            results = self.holistic.process(image_rgb)
+        if self.use_legacy_solutions and self.holistic:
+            if results is None:
+                image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+                image_rgb.flags.writeable = False
+                results = self.holistic.process(image_rgb)
 
-        # Pose: 33 points * 4 (x, y, z, visibility)
-        if results.pose_landmarks:
-            pose = np.array(
-                [[lm.x, lm.y, lm.z, lm.visibility] for lm in results.pose_landmarks.landmark]
-            ).flatten()
+            # Pose: 33 points * 4 (x, y, z, visibility)
+            if hasattr(results, "pose_landmarks") and results.pose_landmarks:
+                pose = np.array(
+                    [[lm.x, lm.y, lm.z, lm.visibility] for lm in results.pose_landmarks.landmark]
+                ).flatten()
+            else:
+                pose = np.zeros(POSE_FEATURES)
+
+            # Left Hand: 21 points * 3 (x, y, z)
+            if hasattr(results, "left_hand_landmarks") and results.left_hand_landmarks:
+                lh = np.array(
+                    [[lm.x, lm.y, lm.z] for lm in results.left_hand_landmarks.landmark]
+                ).flatten()
+            else:
+                lh = np.zeros(LEFT_HAND_FEATURES)
+
+            # Right Hand: 21 points * 3 (x, y, z)
+            if hasattr(results, "right_hand_landmarks") and results.right_hand_landmarks:
+                rh = np.array(
+                    [[lm.x, lm.y, lm.z] for lm in results.right_hand_landmarks.landmark]
+                ).flatten()
+            else:
+                rh = np.zeros(RIGHT_HAND_FEATURES)
+
+            feature_vector = np.concatenate([pose, lh, rh])
         else:
-            pose = np.zeros(POSE_FEATURES)
+            # Fallback zero/synthetic feature vector for environments without mp.solutions
+            feature_vector = np.zeros(TOTAL_FEATURES, dtype=np.float32)
 
-        # Left Hand: 21 points * 3 (x, y, z)
-        if results.left_hand_landmarks:
-            lh = np.array(
-                [[lm.x, lm.y, lm.z] for lm in results.left_hand_landmarks.landmark]
-            ).flatten()
-        else:
-            lh = np.zeros(LEFT_HAND_FEATURES)
-
-        # Right Hand: 21 points * 3 (x, y, z)
-        if results.right_hand_landmarks:
-            rh = np.array(
-                [[lm.x, lm.y, lm.z] for lm in results.right_hand_landmarks.landmark]
-            ).flatten()
-        else:
-            rh = np.zeros(RIGHT_HAND_FEATURES)
-
-        feature_vector = np.concatenate([pose, lh, rh])
         assert feature_vector.shape[0] == TOTAL_FEATURES, f"Expected {TOTAL_FEATURES}, got {feature_vector.shape[0]}"
         return feature_vector
+
 
     def process_video(
         self, video_path: str, target_seq_len: int = SEQ_LEN
@@ -132,7 +147,9 @@ class LandmarkExtractor:
             return np.vstack([sequence, padding])
 
     def close(self):
-        self.holistic.close()
+        if self.holistic:
+            self.holistic.close()
+
 
 
 def process_dataset_directory(

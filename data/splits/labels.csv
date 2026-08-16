@@ -1,251 +1,107 @@
 video_id,label,npy_path,frames,features
-synth_hello_000,hello,data/landmarks/synth_hello_000.npy,45,258
-synth_hello_001,hello,data/landmarks/synth_hello_001.npy,45,258
-synth_hello_002,hello,data/landmarks/synth_hello_002.npy,45,258
-synth_hello_003,hello,data/landmarks/synth_hello_003.npy,45,258
-synth_hello_004,hello,data/landmarks/synth_hello_004.npy,45,258
-synth_hello_005,hello,data/landmarks/synth_hello_005.npy,45,258
-synth_hello_006,hello,data/landmarks/synth_hello_006.npy,45,258
-synth_hello_007,hello,data/landmarks/synth_hello_007.npy,45,258
-synth_hello_008,hello,data/landmarks/synth_hello_008.npy,45,258
-synth_hello_009,hello,data/landmarks/synth_hello_009.npy,45,258
-synth_hello_010,hello,data/landmarks/synth_hello_010.npy,45,258
-synth_hello_011,hello,data/landmarks/synth_hello_011.npy,45,258
-synth_hello_012,hello,data/landmarks/synth_hello_012.npy,45,258
-synth_hello_013,hello,data/landmarks/synth_hello_013.npy,45,258
-synth_hello_014,hello,data/landmarks/synth_hello_014.npy,45,258
-synth_hello_015,hello,data/landmarks/synth_hello_015.npy,45,258
-synth_hello_016,hello,data/landmarks/synth_hello_016.npy,45,258
-synth_hello_017,hello,data/landmarks/synth_hello_017.npy,45,258
-synth_hello_018,hello,data/landmarks/synth_hello_018.npy,45,258
-synth_hello_019,hello,data/landmarks/synth_hello_019.npy,45,258
-synth_hello_020,hello,data/landmarks/synth_hello_020.npy,45,258
-synth_hello_021,hello,data/landmarks/synth_hello_021.npy,45,258
-synth_hello_022,hello,data/landmarks/synth_hello_022.npy,45,258
-synth_hello_023,hello,data/landmarks/synth_hello_023.npy,45,258
-synth_hello_024,hello,data/landmarks/synth_hello_024.npy,45,258
-synth_thank_you_000,thank_you,data/landmarks/synth_thank_you_000.npy,45,258
-synth_thank_you_001,thank_you,data/landmarks/synth_thank_you_001.npy,45,258
-synth_thank_you_002,thank_you,data/landmarks/synth_thank_you_002.npy,45,258
-synth_thank_you_003,thank_you,data/landmarks/synth_thank_you_003.npy,45,258
-synth_thank_you_004,thank_you,data/landmarks/synth_thank_you_004.npy,45,258
-synth_thank_you_005,thank_you,data/landmarks/synth_thank_you_005.npy,45,258
-synth_thank_you_006,thank_you,data/landmarks/synth_thank_you_006.npy,45,258
-synth_thank_you_007,thank_you,data/landmarks/synth_thank_you_007.npy,45,258
-synth_thank_you_008,thank_you,data/landmarks/synth_thank_you_008.npy,45,258
-synth_thank_you_009,thank_you,data/landmarks/synth_thank_you_009.npy,45,258
-synth_thank_you_010,thank_you,data/landmarks/synth_thank_you_010.npy,45,258
-synth_thank_you_011,thank_you,data/landmarks/synth_thank_you_011.npy,45,258
-synth_thank_you_012,thank_you,data/landmarks/synth_thank_you_012.npy,45,258
-synth_thank_you_013,thank_you,data/landmarks/synth_thank_you_013.npy,45,258
-synth_thank_you_014,thank_you,data/landmarks/synth_thank_you_014.npy,45,258
-synth_thank_you_015,thank_you,data/landmarks/synth_thank_you_015.npy,45,258
-synth_thank_you_016,thank_you,data/landmarks/synth_thank_you_016.npy,45,258
-synth_thank_you_017,thank_you,data/landmarks/synth_thank_you_017.npy,45,258
-synth_thank_you_018,thank_you,data/landmarks/synth_thank_you_018.npy,45,258
-synth_thank_you_019,thank_you,data/landmarks/synth_thank_you_019.npy,45,258
-synth_thank_you_020,thank_you,data/landmarks/synth_thank_you_020.npy,45,258
-synth_thank_you_021,thank_you,data/landmarks/synth_thank_you_021.npy,45,258
-synth_thank_you_022,thank_you,data/landmarks/synth_thank_you_022.npy,45,258
-synth_thank_you_023,thank_you,data/landmarks/synth_thank_you_023.npy,45,258
-synth_thank_you_024,thank_you,data/landmarks/synth_thank_you_024.npy,45,258
-synth_please_000,please,data/landmarks/synth_please_000.npy,45,258
-synth_please_001,please,data/landmarks/synth_please_001.npy,45,258
-synth_please_002,please,data/landmarks/synth_please_002.npy,45,258
-synth_please_003,please,data/landmarks/synth_please_003.npy,45,258
-synth_please_004,please,data/landmarks/synth_please_004.npy,45,258
-synth_please_005,please,data/landmarks/synth_please_005.npy,45,258
-synth_please_006,please,data/landmarks/synth_please_006.npy,45,258
-synth_please_007,please,data/landmarks/synth_please_007.npy,45,258
-synth_please_008,please,data/landmarks/synth_please_008.npy,45,258
-synth_please_009,please,data/landmarks/synth_please_009.npy,45,258
-synth_please_010,please,data/landmarks/synth_please_010.npy,45,258
-synth_please_011,please,data/landmarks/synth_please_011.npy,45,258
-synth_please_012,please,data/landmarks/synth_please_012.npy,45,258
-synth_please_013,please,data/landmarks/synth_please_013.npy,45,258
-synth_please_014,please,data/landmarks/synth_please_014.npy,45,258
-synth_please_015,please,data/landmarks/synth_please_015.npy,45,258
-synth_please_016,please,data/landmarks/synth_please_016.npy,45,258
-synth_please_017,please,data/landmarks/synth_please_017.npy,45,258
-synth_please_018,please,data/landmarks/synth_please_018.npy,45,258
-synth_please_019,please,data/landmarks/synth_please_019.npy,45,258
-synth_please_020,please,data/landmarks/synth_please_020.npy,45,258
-synth_please_021,please,data/landmarks/synth_please_021.npy,45,258
-synth_please_022,please,data/landmarks/synth_please_022.npy,45,258
-synth_please_023,please,data/landmarks/synth_please_023.npy,45,258
-synth_please_024,please,data/landmarks/synth_please_024.npy,45,258
-synth_yes_000,yes,data/landmarks/synth_yes_000.npy,45,258
-synth_yes_001,yes,data/landmarks/synth_yes_001.npy,45,258
-synth_yes_002,yes,data/landmarks/synth_yes_002.npy,45,258
-synth_yes_003,yes,data/landmarks/synth_yes_003.npy,45,258
-synth_yes_004,yes,data/landmarks/synth_yes_004.npy,45,258
-synth_yes_005,yes,data/landmarks/synth_yes_005.npy,45,258
-synth_yes_006,yes,data/landmarks/synth_yes_006.npy,45,258
-synth_yes_007,yes,data/landmarks/synth_yes_007.npy,45,258
-synth_yes_008,yes,data/landmarks/synth_yes_008.npy,45,258
-synth_yes_009,yes,data/landmarks/synth_yes_009.npy,45,258
-synth_yes_010,yes,data/landmarks/synth_yes_010.npy,45,258
-synth_yes_011,yes,data/landmarks/synth_yes_011.npy,45,258
-synth_yes_012,yes,data/landmarks/synth_yes_012.npy,45,258
-synth_yes_013,yes,data/landmarks/synth_yes_013.npy,45,258
-synth_yes_014,yes,data/landmarks/synth_yes_014.npy,45,258
-synth_yes_015,yes,data/landmarks/synth_yes_015.npy,45,258
-synth_yes_016,yes,data/landmarks/synth_yes_016.npy,45,258
-synth_yes_017,yes,data/landmarks/synth_yes_017.npy,45,258
-synth_yes_018,yes,data/landmarks/synth_yes_018.npy,45,258
-synth_yes_019,yes,data/landmarks/synth_yes_019.npy,45,258
-synth_yes_020,yes,data/landmarks/synth_yes_020.npy,45,258
-synth_yes_021,yes,data/landmarks/synth_yes_021.npy,45,258
-synth_yes_022,yes,data/landmarks/synth_yes_022.npy,45,258
-synth_yes_023,yes,data/landmarks/synth_yes_023.npy,45,258
-synth_yes_024,yes,data/landmarks/synth_yes_024.npy,45,258
-synth_no_000,no,data/landmarks/synth_no_000.npy,45,258
-synth_no_001,no,data/landmarks/synth_no_001.npy,45,258
-synth_no_002,no,data/landmarks/synth_no_002.npy,45,258
-synth_no_003,no,data/landmarks/synth_no_003.npy,45,258
-synth_no_004,no,data/landmarks/synth_no_004.npy,45,258
-synth_no_005,no,data/landmarks/synth_no_005.npy,45,258
-synth_no_006,no,data/landmarks/synth_no_006.npy,45,258
-synth_no_007,no,data/landmarks/synth_no_007.npy,45,258
-synth_no_008,no,data/landmarks/synth_no_008.npy,45,258
-synth_no_009,no,data/landmarks/synth_no_009.npy,45,258
-synth_no_010,no,data/landmarks/synth_no_010.npy,45,258
-synth_no_011,no,data/landmarks/synth_no_011.npy,45,258
-synth_no_012,no,data/landmarks/synth_no_012.npy,45,258
-synth_no_013,no,data/landmarks/synth_no_013.npy,45,258
-synth_no_014,no,data/landmarks/synth_no_014.npy,45,258
-synth_no_015,no,data/landmarks/synth_no_015.npy,45,258
-synth_no_016,no,data/landmarks/synth_no_016.npy,45,258
-synth_no_017,no,data/landmarks/synth_no_017.npy,45,258
-synth_no_018,no,data/landmarks/synth_no_018.npy,45,258
-synth_no_019,no,data/landmarks/synth_no_019.npy,45,258
-synth_no_020,no,data/landmarks/synth_no_020.npy,45,258
-synth_no_021,no,data/landmarks/synth_no_021.npy,45,258
-synth_no_022,no,data/landmarks/synth_no_022.npy,45,258
-synth_no_023,no,data/landmarks/synth_no_023.npy,45,258
-synth_no_024,no,data/landmarks/synth_no_024.npy,45,258
-synth_help_000,help,data/landmarks/synth_help_000.npy,45,258
-synth_help_001,help,data/landmarks/synth_help_001.npy,45,258
-synth_help_002,help,data/landmarks/synth_help_002.npy,45,258
-synth_help_003,help,data/landmarks/synth_help_003.npy,45,258
-synth_help_004,help,data/landmarks/synth_help_004.npy,45,258
-synth_help_005,help,data/landmarks/synth_help_005.npy,45,258
-synth_help_006,help,data/landmarks/synth_help_006.npy,45,258
-synth_help_007,help,data/landmarks/synth_help_007.npy,45,258
-synth_help_008,help,data/landmarks/synth_help_008.npy,45,258
-synth_help_009,help,data/landmarks/synth_help_009.npy,45,258
-synth_help_010,help,data/landmarks/synth_help_010.npy,45,258
-synth_help_011,help,data/landmarks/synth_help_011.npy,45,258
-synth_help_012,help,data/landmarks/synth_help_012.npy,45,258
-synth_help_013,help,data/landmarks/synth_help_013.npy,45,258
-synth_help_014,help,data/landmarks/synth_help_014.npy,45,258
-synth_help_015,help,data/landmarks/synth_help_015.npy,45,258
-synth_help_016,help,data/landmarks/synth_help_016.npy,45,258
-synth_help_017,help,data/landmarks/synth_help_017.npy,45,258
-synth_help_018,help,data/landmarks/synth_help_018.npy,45,258
-synth_help_019,help,data/landmarks/synth_help_019.npy,45,258
-synth_help_020,help,data/landmarks/synth_help_020.npy,45,258
-synth_help_021,help,data/landmarks/synth_help_021.npy,45,258
-synth_help_022,help,data/landmarks/synth_help_022.npy,45,258
-synth_help_023,help,data/landmarks/synth_help_023.npy,45,258
-synth_help_024,help,data/landmarks/synth_help_024.npy,45,258
-synth_goodbye_000,goodbye,data/landmarks/synth_goodbye_000.npy,45,258
-synth_goodbye_001,goodbye,data/landmarks/synth_goodbye_001.npy,45,258
-synth_goodbye_002,goodbye,data/landmarks/synth_goodbye_002.npy,45,258
-synth_goodbye_003,goodbye,data/landmarks/synth_goodbye_003.npy,45,258
-synth_goodbye_004,goodbye,data/landmarks/synth_goodbye_004.npy,45,258
-synth_goodbye_005,goodbye,data/landmarks/synth_goodbye_005.npy,45,258
-synth_goodbye_006,goodbye,data/landmarks/synth_goodbye_006.npy,45,258
-synth_goodbye_007,goodbye,data/landmarks/synth_goodbye_007.npy,45,258
-synth_goodbye_008,goodbye,data/landmarks/synth_goodbye_008.npy,45,258
-synth_goodbye_009,goodbye,data/landmarks/synth_goodbye_009.npy,45,258
-synth_goodbye_010,goodbye,data/landmarks/synth_goodbye_010.npy,45,258
-synth_goodbye_011,goodbye,data/landmarks/synth_goodbye_011.npy,45,258
-synth_goodbye_012,goodbye,data/landmarks/synth_goodbye_012.npy,45,258
-synth_goodbye_013,goodbye,data/landmarks/synth_goodbye_013.npy,45,258
-synth_goodbye_014,goodbye,data/landmarks/synth_goodbye_014.npy,45,258
-synth_goodbye_015,goodbye,data/landmarks/synth_goodbye_015.npy,45,258
-synth_goodbye_016,goodbye,data/landmarks/synth_goodbye_016.npy,45,258
-synth_goodbye_017,goodbye,data/landmarks/synth_goodbye_017.npy,45,258
-synth_goodbye_018,goodbye,data/landmarks/synth_goodbye_018.npy,45,258
-synth_goodbye_019,goodbye,data/landmarks/synth_goodbye_019.npy,45,258
-synth_goodbye_020,goodbye,data/landmarks/synth_goodbye_020.npy,45,258
-synth_goodbye_021,goodbye,data/landmarks/synth_goodbye_021.npy,45,258
-synth_goodbye_022,goodbye,data/landmarks/synth_goodbye_022.npy,45,258
-synth_goodbye_023,goodbye,data/landmarks/synth_goodbye_023.npy,45,258
-synth_goodbye_024,goodbye,data/landmarks/synth_goodbye_024.npy,45,258
-synth_welcome_000,welcome,data/landmarks/synth_welcome_000.npy,45,258
-synth_welcome_001,welcome,data/landmarks/synth_welcome_001.npy,45,258
-synth_welcome_002,welcome,data/landmarks/synth_welcome_002.npy,45,258
-synth_welcome_003,welcome,data/landmarks/synth_welcome_003.npy,45,258
-synth_welcome_004,welcome,data/landmarks/synth_welcome_004.npy,45,258
-synth_welcome_005,welcome,data/landmarks/synth_welcome_005.npy,45,258
-synth_welcome_006,welcome,data/landmarks/synth_welcome_006.npy,45,258
-synth_welcome_007,welcome,data/landmarks/synth_welcome_007.npy,45,258
-synth_welcome_008,welcome,data/landmarks/synth_welcome_008.npy,45,258
-synth_welcome_009,welcome,data/landmarks/synth_welcome_009.npy,45,258
-synth_welcome_010,welcome,data/landmarks/synth_welcome_010.npy,45,258
-synth_welcome_011,welcome,data/landmarks/synth_welcome_011.npy,45,258
-synth_welcome_012,welcome,data/landmarks/synth_welcome_012.npy,45,258
-synth_welcome_013,welcome,data/landmarks/synth_welcome_013.npy,45,258
-synth_welcome_014,welcome,data/landmarks/synth_welcome_014.npy,45,258
-synth_welcome_015,welcome,data/landmarks/synth_welcome_015.npy,45,258
-synth_welcome_016,welcome,data/landmarks/synth_welcome_016.npy,45,258
-synth_welcome_017,welcome,data/landmarks/synth_welcome_017.npy,45,258
-synth_welcome_018,welcome,data/landmarks/synth_welcome_018.npy,45,258
-synth_welcome_019,welcome,data/landmarks/synth_welcome_019.npy,45,258
-synth_welcome_020,welcome,data/landmarks/synth_welcome_020.npy,45,258
-synth_welcome_021,welcome,data/landmarks/synth_welcome_021.npy,45,258
-synth_welcome_022,welcome,data/landmarks/synth_welcome_022.npy,45,258
-synth_welcome_023,welcome,data/landmarks/synth_welcome_023.npy,45,258
-synth_welcome_024,welcome,data/landmarks/synth_welcome_024.npy,45,258
-synth_water_000,water,data/landmarks/synth_water_000.npy,45,258
-synth_water_001,water,data/landmarks/synth_water_001.npy,45,258
-synth_water_002,water,data/landmarks/synth_water_002.npy,45,258
-synth_water_003,water,data/landmarks/synth_water_003.npy,45,258
-synth_water_004,water,data/landmarks/synth_water_004.npy,45,258
-synth_water_005,water,data/landmarks/synth_water_005.npy,45,258
-synth_water_006,water,data/landmarks/synth_water_006.npy,45,258
-synth_water_007,water,data/landmarks/synth_water_007.npy,45,258
-synth_water_008,water,data/landmarks/synth_water_008.npy,45,258
-synth_water_009,water,data/landmarks/synth_water_009.npy,45,258
-synth_water_010,water,data/landmarks/synth_water_010.npy,45,258
-synth_water_011,water,data/landmarks/synth_water_011.npy,45,258
-synth_water_012,water,data/landmarks/synth_water_012.npy,45,258
-synth_water_013,water,data/landmarks/synth_water_013.npy,45,258
-synth_water_014,water,data/landmarks/synth_water_014.npy,45,258
-synth_water_015,water,data/landmarks/synth_water_015.npy,45,258
-synth_water_016,water,data/landmarks/synth_water_016.npy,45,258
-synth_water_017,water,data/landmarks/synth_water_017.npy,45,258
-synth_water_018,water,data/landmarks/synth_water_018.npy,45,258
-synth_water_019,water,data/landmarks/synth_water_019.npy,45,258
-synth_water_020,water,data/landmarks/synth_water_020.npy,45,258
-synth_water_021,water,data/landmarks/synth_water_021.npy,45,258
-synth_water_022,water,data/landmarks/synth_water_022.npy,45,258
-synth_water_023,water,data/landmarks/synth_water_023.npy,45,258
-synth_water_024,water,data/landmarks/synth_water_024.npy,45,258
-synth_food_000,food,data/landmarks/synth_food_000.npy,45,258
-synth_food_001,food,data/landmarks/synth_food_001.npy,45,258
-synth_food_002,food,data/landmarks/synth_food_002.npy,45,258
-synth_food_003,food,data/landmarks/synth_food_003.npy,45,258
-synth_food_004,food,data/landmarks/synth_food_004.npy,45,258
-synth_food_005,food,data/landmarks/synth_food_005.npy,45,258
-synth_food_006,food,data/landmarks/synth_food_006.npy,45,258
-synth_food_007,food,data/landmarks/synth_food_007.npy,45,258
-synth_food_008,food,data/landmarks/synth_food_008.npy,45,258
-synth_food_009,food,data/landmarks/synth_food_009.npy,45,258
-synth_food_010,food,data/landmarks/synth_food_010.npy,45,258
-synth_food_011,food,data/landmarks/synth_food_011.npy,45,258
-synth_food_012,food,data/landmarks/synth_food_012.npy,45,258
-synth_food_013,food,data/landmarks/synth_food_013.npy,45,258
-synth_food_014,food,data/landmarks/synth_food_014.npy,45,258
-synth_food_015,food,data/landmarks/synth_food_015.npy,45,258
-synth_food_016,food,data/landmarks/synth_food_016.npy,45,258
-synth_food_017,food,data/landmarks/synth_food_017.npy,45,258
-synth_food_018,food,data/landmarks/synth_food_018.npy,45,258
-synth_food_019,food,data/landmarks/synth_food_019.npy,45,258
-synth_food_020,food,data/landmarks/synth_food_020.npy,45,258
-synth_food_021,food,data/landmarks/synth_food_021.npy,45,258
-synth_food_022,food,data/landmarks/synth_food_022.npy,45,258
-synth_food_023,food,data/landmarks/synth_food_023.npy,45,258
-synth_food_024,food,data/landmarks/synth_food_024.npy,45,258
+MVI_9971,51. Good Morning,data/landmarks/51. Good Morning_MVI_9971_0.npy,45,258
+MVI_9970,51. Good Morning,data/landmarks/51. Good Morning_MVI_9970_1.npy,45,258
+MVI_0048,51. Good Morning,data/landmarks/51. Good Morning_MVI_0048_2.npy,45,258
+MVI_0100,51. Good Morning,data/landmarks/51. Good Morning_MVI_0100_3.npy,45,258
+MVI_0099,51. Good Morning,data/landmarks/51. Good Morning_MVI_0099_4.npy,45,258
+MVI_0098,51. Good Morning,data/landmarks/51. Good Morning_MVI_0098_5.npy,45,258
+MVI_0042,51. Good Morning,data/landmarks/51. Good Morning_MVI_0042_6.npy,45,258
+MVI_9933,51. Good Morning,data/landmarks/51. Good Morning_MVI_9933_7.npy,45,258
+MVI_9932,51. Good Morning,data/landmarks/51. Good Morning_MVI_9932_8.npy,45,258
+MVI_0043,51. Good Morning,data/landmarks/51. Good Morning_MVI_0043_9.npy,45,258
+MVI_0044,51. Good Morning,data/landmarks/51. Good Morning_MVI_0044_10.npy,45,258
+MVI_9935,51. Good Morning,data/landmarks/51. Good Morning_MVI_9935_11.npy,45,258
+MVI_9934,51. Good Morning,data/landmarks/51. Good Morning_MVI_9934_12.npy,45,258
+MVI_0045,51. Good Morning,data/landmarks/51. Good Morning_MVI_0045_13.npy,45,258
+MVI_0047,51. Good Morning,data/landmarks/51. Good Morning_MVI_0047_14.npy,45,258
+MVI_0046,51. Good Morning,data/landmarks/51. Good Morning_MVI_0046_15.npy,45,258
+MVI_9993,51. Good Morning,data/landmarks/51. Good Morning_MVI_9993_16.npy,45,258
+MVI_9992,51. Good Morning,data/landmarks/51. Good Morning_MVI_9992_17.npy,45,258
+MVI_9991,51. Good Morning,data/landmarks/51. Good Morning_MVI_9991_18.npy,45,258
+MVI_9969,51. Good Morning,data/landmarks/51. Good Morning_MVI_9969_19.npy,45,258
+MVI_9968,51. Good Morning,data/landmarks/51. Good Morning_MVI_9968_20.npy,45,258
+MVI_9972,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9972_21.npy,45,258
+MVI_9973,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9973_22.npy,45,258
+MVI_9974,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9974_23.npy,45,258
+MVI_9975,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9975_24.npy,45,258
+MVI_0103,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0103_25.npy,45,258
+MVI_0102,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0102_26.npy,45,258
+MVI_0048,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0048_27.npy,45,258
+MVI_9939,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9939_28.npy,45,258
+MVI_0101,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0101_29.npy,45,258
+MVI_9938,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9938_30.npy,45,258
+MVI_0049,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0049_31.npy,45,258
+MVI_0050_ (2),52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0050_ (2)_32.npy,45,258
+MVI_0050_ (1),52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0050_ (1)_33.npy,45,258
+MVI_0050,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0050_34.npy,45,258
+MVI_0051,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0051_35.npy,45,258
+MVI_0047,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0047_36.npy,45,258
+MVI_9936,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9936_37.npy,45,258
+MVI_9937,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9937_38.npy,45,258
+MVI_0046,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_0046_39.npy,45,258
+MVI_9995,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9995_40.npy,45,258
+MVI_9994,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9994_41.npy,45,258
+MVI_9996,52. Good afternoon,data/landmarks/52. Good afternoon_MVI_9996_42.npy,45,258
+MVI_9965,50. Alright,data/landmarks/50. Alright_MVI_9965_43.npy,45,258
+MVI_9964,50. Alright,data/landmarks/50. Alright_MVI_9964_44.npy,45,258
+MVI_9966,50. Alright,data/landmarks/50. Alright_MVI_9966_45.npy,45,258
+MVI_9988,50. Alright,data/landmarks/50. Alright_MVI_9988_46.npy,45,258
+MVI_9963,50. Alright,data/landmarks/50. Alright_MVI_9963_47.npy,45,258
+MVI_9989,50. Alright,data/landmarks/50. Alright_MVI_9989_48.npy,45,258
+MVI_0039,50. Alright,data/landmarks/50. Alright_MVI_0039_49.npy,45,258
+MVI_0038,50. Alright,data/landmarks/50. Alright_MVI_0038_50.npy,45,258
+MVI_0095,50. Alright,data/landmarks/50. Alright_MVI_0095_51.npy,45,258
+MVI_9926,50. Alright,data/landmarks/50. Alright_MVI_9926_52.npy,45,258
+MVI_0043,50. Alright,data/landmarks/50. Alright_MVI_0043_53.npy,45,258
+MVI_9924,50. Alright,data/landmarks/50. Alright_MVI_9924_54.npy,45,258
+MVI_0096,50. Alright,data/landmarks/50. Alright_MVI_0096_55.npy,45,258
+MVI_0097,50. Alright,data/landmarks/50. Alright_MVI_0097_56.npy,45,258
+MVI_9925,50. Alright,data/landmarks/50. Alright_MVI_9925_57.npy,45,258
+MVI_0040,50. Alright,data/landmarks/50. Alright_MVI_0040_58.npy,45,258
+MVI_0044,50. Alright,data/landmarks/50. Alright_MVI_0044_59.npy,45,258
+MVI_0045,50. Alright,data/landmarks/50. Alright_MVI_0045_60.npy,45,258
+MVI_9923,50. Alright,data/landmarks/50. Alright_MVI_9923_61.npy,45,258
+MVI_9990,50. Alright,data/landmarks/50. Alright_MVI_9990_62.npy,45,258
+MVI_0037,50. Alright,data/landmarks/50. Alright_MVI_0037_63.npy,45,258
+MVI_9959,49. How are you,data/landmarks/49. How are you_MVI_9959_64.npy,45,258
+MVI_9962,49. How are you,data/landmarks/49. How are you_MVI_9962_65.npy,45,258
+MVI_9960,49. How are you,data/landmarks/49. How are you_MVI_9960_66.npy,45,258
+MVI_9961,49. How are you,data/landmarks/49. How are you_MVI_9961_67.npy,45,258
+MVI_0042,49. How are you,data/landmarks/49. How are you_MVI_0042_68.npy,45,258
+MVI_0094,49. How are you,data/landmarks/49. How are you_MVI_0094_69.npy,45,258
+MVI_0041,49. How are you,data/landmarks/49. How are you_MVI_0041_70.npy,45,258
+MVI_9918,49. How are you,data/landmarks/49. How are you_MVI_9918_71.npy,45,258
+MVI_9919,49. How are you,data/landmarks/49. How are you_MVI_9919_72.npy,45,258
+MVI_0040,49. How are you,data/landmarks/49. How are you_MVI_0040_73.npy,45,258
+MVI_0093,49. How are you,data/landmarks/49. How are you_MVI_0093_74.npy,45,258
+MVI_9921,49. How are you,data/landmarks/49. How are you_MVI_9921_75.npy,45,258
+MVI_9920,49. How are you,data/landmarks/49. How are you_MVI_9920_76.npy,45,258
+MVI_0092,49. How are you,data/landmarks/49. How are you_MVI_0092_77.npy,45,258
+MVI_9987,49. How are you,data/landmarks/49. How are you_MVI_9987_78.npy,45,258
+MVI_0035,49. How are you,data/landmarks/49. How are you_MVI_0035_79.npy,45,258
+MVI_0034,49. How are you,data/landmarks/49. How are you_MVI_0034_80.npy,45,258
+MVI_9986,49. How are you,data/landmarks/49. How are you_MVI_9986_81.npy,45,258
+MVI_0036,49. How are you,data/landmarks/49. How are you_MVI_0036_82.npy,45,258
+MVI_9985,49. How are you,data/landmarks/49. How are you_MVI_9985_83.npy,45,258
+MVI_0033,49. How are you,data/landmarks/49. How are you_MVI_0033_84.npy,45,258
+MVI_0029,48. Hello,data/landmarks/48. Hello_MVI_0029_85.npy,45,258
+MVI_0039,48. Hello,data/landmarks/48. Hello_MVI_0039_86.npy,45,258
+MVI_0038,48. Hello,data/landmarks/48. Hello_MVI_0038_87.npy,45,258
+MVI_0089,48. Hello,data/landmarks/48. Hello_MVI_0089_88.npy,45,258
+MVI_9914,48. Hello,data/landmarks/48. Hello_MVI_9914_89.npy,45,258
+MVI_9915,48. Hello,data/landmarks/48. Hello_MVI_9915_90.npy,45,258
+MVI_9917,48. Hello,data/landmarks/48. Hello_MVI_9917_91.npy,45,258
+MVI_9916,48. Hello,data/landmarks/48. Hello_MVI_9916_92.npy,45,258
+MVI_0090,48. Hello,data/landmarks/48. Hello_MVI_0090_93.npy,45,258
+MVI_0091,48. Hello,data/landmarks/48. Hello_MVI_0091_94.npy,45,258
+MVI_9984,48. Hello,data/landmarks/48. Hello_MVI_9984_95.npy,45,258
+MVI_0037,48. Hello,data/landmarks/48. Hello_MVI_0037_96.npy,45,258
+MVI_9956,48. Hello,data/landmarks/48. Hello_MVI_9956_97.npy,45,258
+MVI_9957,48. Hello,data/landmarks/48. Hello_MVI_9957_98.npy,45,258
+MVI_0032,48. Hello,data/landmarks/48. Hello_MVI_0032_99.npy,45,258
+MVI_0030,48. Hello,data/landmarks/48. Hello_MVI_0030_100.npy,45,258
+MVI_9982,48. Hello,data/landmarks/48. Hello_MVI_9982_101.npy,45,258
+MVI_9955,48. Hello,data/landmarks/48. Hello_MVI_9955_102.npy,45,258
+MVI_9954,48. Hello,data/landmarks/48. Hello_MVI_9954_103.npy,45,258
+MVI_9983,48. Hello,data/landmarks/48. Hello_MVI_9983_104.npy,45,258
+MVI_0031,48. Hello,data/landmarks/48. Hello_MVI_0031_105.npy,45,258
