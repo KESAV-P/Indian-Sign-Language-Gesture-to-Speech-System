@@ -1,0 +1,248 @@
+{
+  "project_title": "ISL-Speak: Indian Sign Language Gesture-to-Speech System",
+  "author_context": {
+    "student": "Kesav, B.E. CSE (AI & ML), Chennai Institute of Technology",
+    "ide": "Google Antigravity IDE (local agentic dev environment)",
+    "training_environment": "Google Colab (GPU runtime) — NOT local",
+    "instructions_for_agent": "This entire JSON is a single master instruction set. Read it top to bottom before writing any code. Execute phases sequentially. Never attempt model training inside Antigravity/local machine — every training step must produce a Colab-ready .ipynb notebook or script pushed to Drive/GitHub instead. Local machine is only for: repo scaffolding, data preprocessing scripts (light, non-GPU), Flask/Streamlit inference app, TTS integration, and documentation."
+  },
+
+  "problem_statement": "Build a system that takes a video of a person performing an Indian Sign Language (ISL) gesture, classifies the gesture into a word/phrase using a CNN+LSTM/Transformer pipeline, and converts the recognized word sequence into audible speech via TTS — enabling real-time accessibility for the Indian deaf and hard-of-hearing community. ASL has many mature open-source projects; ISL is comparatively underexplored, which is the core novelty and impact angle for this project.",
+
+  "dataset": {
+    "primary": {
+      "name": "INCLUDE: Indian Sign Language Dataset",
+      "source_org": "AI4Bharat, IIT Madras (recorded with St. Louis School for the Deaf, Adyar, Chennai)",
+      "size": "4292 videos total (paper cites 4287; 5 added later) — 3475 in train.csv, 817 in test.csv",
+      "classes": "~263 word/sign classes across categories like Greetings, Colours, Society, Electronics, etc.",
+      "access": "Hosted via AI4Bharat OpenHands project; search 'AI4Bharat INCLUDE dataset download' — dataset is distributed as per-category zip files of short video clips",
+      "notes": "Full INCLUDE is large (many GB of video). For a hackathon/course-project timeline, start with the INCLUDE-50 subset (50 words, 25 videos each) to get an end-to-end pipeline working fast, then scale to more classes if time allows."
+    },
+    "fallback": {
+      "name": "INCLUDE-50",
+      "why": "Smaller, faster to download and iterate on Colab free-tier without hitting disk/RAM limits."
+    },
+    "licensing_note": "Confirm the dataset's license/terms of use before redistribution; cite the INCLUDE paper (Sridhar et al.) in the final report."
+  },
+
+  "high_level_architecture": {
+    "pipeline": [
+      "1. Video input (webcam or uploaded clip)",
+      "2. Frame extraction + landmark extraction using MediaPipe Holistic (pose + both hands + face mesh subset)",
+      "3. Sequence of keypoint vectors per video (NOT raw pixels — this is the key design decision, see rationale below)",
+      "4. Temporal model: LSTM / BiLSTM / small Transformer encoder classifies the keypoint sequence into a gesture/word class",
+      "5. Predicted word(s) assembled into a sentence (simple grammar smoothing / word buffer)",
+      "6. Text-to-Speech (TTS) engine converts the sentence to audio output"
+    ],
+    "design_rationale_keypoints_over_raw_video": "Training a 3D-CNN or CNN+LSTM directly on raw video frames is heavy (large tensors, slow, GPU-memory hungry) and hard to justify running repeatedly on Colab free tier within hackathon time. Extracting MediaPipe pose/hand landmarks first reduces each frame to a small numeric vector (~150-225 floats), so the temporal model trains on lightweight sequences (frames x features) instead of (frames x H x W x 3) video tensors. This is faster to train, smaller to store, and still captures the motion dynamics that matter for sign recognition. State this explicitly in the report as an engineering decision, not a limitation.",
+    "alternative_if_time_permits": "Once the keypoint-based LSTM baseline works end-to-end, optionally add a CNN branch (e.g., MobileNetV2 features from cropped hand regions) fused with the keypoint LSTM for a hybrid model — this becomes the 'stretch goal' / novelty upgrade if the base pipeline is done early."
+  },
+
+  "tech_stack": {
+    "local_ide_antigravity": ["Python 3.10+", "VS-Code-like editor", "git", "virtualenv/venv", "Streamlit or Flask for demo app", "OpenCV", "MediaPipe", "pyttsx3 / gTTS for local TTS testing"],
+    "colab_training": ["PyTorch or TensorFlow/Keras (pick one, be consistent everywhere)", "MediaPipe (for landmark pre-extraction if not done locally)", "NumPy, pandas", "scikit-learn (train/val/test split, metrics)", "matplotlib/seaborn (loss/accuracy curves, confusion matrix)", "Google Drive mount for dataset + checkpoint persistence"],
+    "recommended_framework": "PyTorch — easier to debug LSTM/Transformer sequence models step-by-step in Colab and more common in recent ISL/SLR papers referenced by INCLUDE.",
+    "tts": "pyttsx3 (offline) as primary for demo reliability; gTTS (online, better quality) as optional secondary voice."
+  },
+
+  "repository_structure": {
+    "isl-speak/": {
+      "data/": {
+        "raw/": "downloaded INCLUDE videos (gitignored, too large for repo)",
+        "landmarks/": "extracted .npy / .csv keypoint sequences per video (gitignored or Git LFS)",
+        "splits/": "train.csv, val.csv, test.csv with video_id -> label mapping"
+      },
+      "notebooks/": {
+        "01_data_exploration.ipynb": "run in Antigravity locally on a tiny sample, or Colab",
+        "02_landmark_extraction.ipynb": "Colab or local — MediaPipe pass over videos",
+        "03_model_training.ipynb": "COLAB ONLY — full training loop, checkpointing to Drive",
+        "04_evaluation.ipynb": "Colab — confusion matrix, per-class accuracy, error analysis"
+      },
+      "src/": {
+        "preprocessing/": ["extract_landmarks.py", "build_dataset.py", "augmentation.py"],
+        "models/": ["lstm_classifier.py", "transformer_classifier.py", "model_utils.py"],
+        "training/": ["train.py (Colab-invocable script, mirrors notebook 03)", "config.yaml"],
+        "inference/": ["realtime_predict.py", "tts_engine.py", "sentence_buffer.py"],
+        "app/": ["streamlit_app.py or flask_app.py — the demo interface"]
+      },
+      "checkpoints/": "downloaded best model weights from Colab (gitignored, or store link in README)",
+      "reports/": ["figures/", "final_report.md", "confusion_matrix.png", "training_curves.png"],
+      "README.md": "setup instructions, architecture diagram, results, demo GIF",
+      "requirements.txt": "pinned local dependencies",
+      "requirements_colab.txt": "pinned Colab dependencies (may differ slightly, e.g. no PyAudio)",
+      ".gitignore": "data/raw, data/landmarks, checkpoints/*.pt, __pycache__, .ipynb_checkpoints"
+    }
+  },
+
+  "phases": [
+    {
+      "phase": 0,
+      "title": "Environment & Repo Setup (Antigravity, local)",
+      "goal": "Get a clean, version-controlled project skeleton running locally before touching any data.",
+      "steps": [
+        "Create a new project folder isl-speak/ and initialize git.",
+        "Create the folder structure exactly as defined in repository_structure above.",
+        "Set up a Python virtual environment (python -m venv venv) and activate it.",
+        "Create requirements.txt with: opencv-python, mediapipe, numpy, pandas, scikit-learn, matplotlib, streamlit, pyttsx3, gTTS, torch (CPU version is fine locally — GPU work happens on Colab), torchvision (if needed for hybrid model later).",
+        "pip install -r requirements.txt and verify `import mediapipe, cv2, torch` all succeed.",
+        "Create a GitHub repo and push the skeleton. This repo will be the sync bridge between Antigravity (local) and Colab (clone the repo or mount via Drive in Colab).",
+        "Write a first-draft README.md with project title, problem statement, and architecture diagram placeholder."
+      ],
+      "antigravity_agent_prompt": "Create a Python project skeleton for an Indian Sign Language gesture-to-speech system called 'isl-speak'. Set up the folder structure: data/{raw,landmarks,splits}, notebooks/, src/{preprocessing,models,training,inference,app}, checkpoints/, reports/{figures}. Initialize git, create a requirements.txt with opencv-python, mediapipe, numpy, pandas, scikit-learn, matplotlib, streamlit, pyttsx3, gTTS, torch, torchvision. Create a .gitignore excluding data/raw, data/landmarks, checkpoints/*.pt, __pycache__, .ipynb_checkpoints, venv/. Create a starter README.md with a project title, one-paragraph problem statement, and a 'Setup' section explaining that training happens on Google Colab, not locally.",
+      "acceptance_criteria": ["Folder structure exists exactly as specified", "venv installs cleanly with no errors", "git repo initialized and first commit pushed"]
+    },
+
+    {
+      "phase": 1,
+      "title": "Dataset Acquisition & Exploration",
+      "goal": "Obtain the INCLUDE (or INCLUDE-50) dataset and understand its structure before writing any pipeline code.",
+      "steps": [
+        "Search for and download the INCLUDE-50 subset first (smaller, faster iteration). Search terms: 'AI4Bharat INCLUDE dataset', 'AI4Bharat OpenHands datasets', 'INCLUDE-50 sign language download'.",
+        "Because full-size video data is large, download directly into a Google Drive folder (do this from Colab, not locally) rather than onto the local disk — this avoids filling up Antigravity's local storage.",
+        "Locally in Antigravity, only download a tiny sample (5-10 videos across 3-4 classes) to prototype the landmark-extraction code before running it at scale on Colab.",
+        "Write 01_data_exploration.ipynb: count videos per class, check video duration/fps/resolution distribution, visualize a few sample frames, confirm class label source (folder name vs CSV mapping).",
+        "Document class imbalance if any — INCLUDE has variable videos per class; note this for later (may need class weighting or augmentation)."
+      ],
+      "antigravity_agent_prompt": "Write a data exploration script/notebook (notebooks/01_data_exploration.ipynb) for the INCLUDE-50 Indian Sign Language dataset. Given a local sample folder of a few videos (data/raw/sample/), write code that: lists all video files and their class labels (derived from parent folder name), prints total video count per class as a bar chart using matplotlib, reads each video's fps/frame count/resolution using OpenCV and prints a summary table with pandas, and displays 4 sample frames from 2 different classes using matplotlib. Keep this notebook light — it should run on CPU in seconds for a handful of sample videos, since the full dataset will only be explored on Colab.",
+      "acceptance_criteria": ["Notebook runs end-to-end on the small local sample", "Class distribution and video metadata are clearly printed/plotted", "No attempt to load the full dataset locally"]
+    },
+
+    {
+      "phase": 2,
+      "title": "Landmark Extraction Pipeline (MediaPipe)",
+      "goal": "Convert raw videos into fixed-format numeric keypoint sequences — this is the single most important preprocessing step and determines model input shape for the rest of the project.",
+      "steps": [
+        "Write src/preprocessing/extract_landmarks.py using MediaPipe Holistic to extract per-frame landmarks: pose (33 points), left hand (21 points), right hand (21 points). Optionally include a reduced face mesh subset for mouth-shape cues, but pose+hands is sufficient for a first version.",
+        "For each frame, flatten (x, y, [z], visibility) for each landmark into a single vector. Decide and document a fixed feature-vector length (e.g., pose 33*4 + left hand 21*3 + right hand 21*3 = 264 features/frame as an example — compute your actual number and keep it consistent everywhere).",
+        "Handle variable video length: define a fixed sequence length (e.g., 40-60 frames). Uniformly sample or pad/truncate every video to this length so all training examples have the same shape (T, F).",
+        "Handle missing-landmark frames (e.g., hand out of view): fill with zeros or the previous frame's values (documented choice), don't silently crash.",
+        "Save each processed video as a .npy file named by video_id in data/landmarks/, plus a labels.csv mapping video_id -> class label -> numeric class index.",
+        "This script should be runnable BOTH locally (for the small sample, to verify correctness) AND as a Colab cell (for the full dataset, using GPU-accelerated video decode if available, though MediaPipe itself is CPU-based).",
+        "Test on the small local sample first: confirm output shape is exactly (T, F) for every processed video before scaling up on Colab."
+      ],
+      "antigravity_agent_prompt": "Write src/preprocessing/extract_landmarks.py. Use MediaPipe Holistic to process a folder of ISL sign videos. For each video: read frames with OpenCV, run MediaPipe Holistic on each frame to extract pose landmarks (33 points x 4 values: x,y,z,visibility), left hand landmarks (21 points x 3 values: x,y,z), and right hand landmarks (21 points x 3 values: x,y,z), concatenate them into one feature vector per frame, and if a hand/pose is not detected in a frame fill that segment with zeros. Uniformly sample or pad each video's frame sequence to a fixed length of 45 frames (configurable constant SEQ_LEN). Save the resulting (SEQ_LEN, num_features) array as a .npy file per video into data/landmarks/, and append a row (video_id, label, npy_path) to data/splits/labels.csv. Include a __main__ block that processes all videos in a given input folder and prints progress with tqdm. Add clear docstrings and a comment explaining the exact feature vector length calculation.",
+      "acceptance_criteria": ["Every .npy file has identical shape (SEQ_LEN, num_features)", "labels.csv correctly maps video_id to class", "Script handles at least one video with a missing hand landmark without crashing", "Runs successfully on the small local sample"]
+    },
+
+    {
+      "phase": 3,
+      "title": "Dataset Packaging for Colab",
+      "goal": "Bundle the extracted landmark dataset so Colab can load it quickly without needing the raw videos.",
+      "steps": [
+        "Once landmark extraction is validated locally, run it AT SCALE inside a Colab notebook (not locally) against the full dataset mounted from Google Drive.",
+        "In Colab: mount Drive, download/unzip INCLUDE-50 (or full INCLUDE) into a Drive-backed folder, run extract_landmarks.py logic over all videos, save all .npy files + labels.csv back to Drive under a persistent folder (e.g., /content/drive/MyDrive/isl-speak/landmarks/).",
+        "Combine all per-video .npy arrays into a single stacked array (or an HDF5/npz archive) for fast loading — e.g., X.npy shaped (N, SEQ_LEN, F) and y.npy shaped (N,) — this avoids thousands of small file reads during training.",
+        "Do a stratified train/val/test split (e.g., 70/15/15) using scikit-learn's train_test_split with stratify=y, saved as index arrays or separate .npz files.",
+        "Save class_index_to_label.json so predictions can be mapped back to human-readable words later."
+      ],
+      "antigravity_agent_prompt": "Write a Colab-ready notebook cell (to be placed in notebooks/02_landmark_extraction.ipynb) that: mounts Google Drive, iterates over all per-video .npy landmark files and their labels.csv, stacks them into a single X array of shape (N, SEQ_LEN, num_features) and y array of shape (N,) using numpy, performs a stratified train/val/test split (70/15/15) with sklearn.model_selection.train_test_split, saves X_train/y_train/X_val/y_val/X_test/y_test as compressed .npz files to a Drive folder, and saves a class_index_to_label.json mapping. Print final shapes and class distribution per split for a sanity check.",
+      "acceptance_criteria": ["Single fast-loading dataset file (or small set of files) exists on Drive", "Train/val/test splits are stratified and shapes are logged", "class_index_to_label.json is human-readable and correct"]
+    },
+
+    {
+      "phase": 4,
+      "title": "Model Architecture Design",
+      "goal": "Design the sequence classifier that maps a (SEQ_LEN, num_features) keypoint sequence to a gesture/word class.",
+      "steps": [
+        "Baseline model: a 2-layer BiLSTM over the keypoint sequence, followed by a dense classification head with dropout and softmax over num_classes. This is the primary deliverable model — get this working first.",
+        "Stretch model: a small Transformer encoder (2-4 layers, 4-8 attention heads) over the same input, with a learned positional encoding and a classification token or mean-pooling head. Compare against the LSTM baseline.",
+        "Write both as separate, swappable modules in src/models/ (lstm_classifier.py, transformer_classifier.py) sharing a common interface (forward(x) -> logits) so the training script can select either via a config flag.",
+        "Keep model sizes modest — this must train quickly on Colab's free-tier GPU (T4). A BiLSTM with hidden_size=128-256 and a 2-4 layer Transformer with d_model=128-256 are both appropriately sized.",
+        "Add class-weighted loss (nn.CrossEntropyLoss(weight=...)) if class imbalance was noted in Phase 1."
+      ],
+      "antigravity_agent_prompt": "Write two PyTorch model files. First, src/models/lstm_classifier.py: a class SignLSTMClassifier(nn.Module) with a bidirectional 2-layer LSTM (input_size=num_features, hidden_size=128, batch_first=True), followed by dropout(0.3), a linear layer from hidden_size*2 to num_classes, using the final hidden state (concatenated forward+backward) for classification. Second, src/models/transformer_classifier.py: a class SignTransformerClassifier(nn.Module) with a linear input projection to d_model=128, learned positional embeddings for SEQ_LEN positions, a nn.TransformerEncoder with 3 layers and 4 heads, mean-pooling over the sequence dimension, then a linear classification head to num_classes. Both classes should take (num_features, num_classes, seq_len) as constructor arguments and expose a forward(x) method where x has shape (batch, seq_len, num_features), returning logits of shape (batch, num_classes). Include short docstrings explaining the architecture choice.",
+      "acceptance_criteria": ["Both models instantiate without error given dummy input of the correct shape", "Forward pass produces logits of shape (batch, num_classes)", "Models share a consistent constructor interface"]
+    },
+
+    {
+      "phase": 5,
+      "title": "Colab Training Notebook (GPU) — THE CORE TRAINING STEP",
+      "goal": "Train the model(s) fully on Google Colab, with checkpointing, logging, and reproducibility. This phase never runs locally.",
+      "steps": [
+        "In Colab: Runtime -> Change runtime type -> GPU (T4 is sufficient). Mount Drive and load the packaged X_train/y_train/... .npz files from Phase 3.",
+        "Clone the GitHub repo into Colab (or pip install -e . / sys.path append) so src/models/*.py can be imported directly — avoid duplicating model code inside the notebook.",
+        "Wrap arrays in torch.utils.data.TensorDataset + DataLoader with an appropriate batch size (e.g., 32-64).",
+        "Write the training loop in notebooks/03_model_training.ipynb: standard PyTorch loop with CrossEntropyLoss, Adam optimizer (lr=1e-3 with a scheduler like ReduceLROnPlateau or CosineAnnealingLR), track train/val loss and accuracy per epoch, save the best model checkpoint (by val accuracy) to Drive after every improvement.",
+        "Train for enough epochs to see convergence (start with 40-60 epochs with early stopping patience ~8-10), plot training curves at the end.",
+        "Train BOTH the LSTM baseline and the Transformer stretch model (if time allows) and compare val accuracy — keep whichever performs best, or report both for the 'ablation' section of the write-up.",
+        "Download the final best checkpoint(s) from Drive back into the local checkpoints/ folder in Antigravity so the local demo app can load them for inference.",
+        "IMPORTANT: never run this training loop on the local Antigravity machine — only write/edit the code there; execute in the Colab browser tab."
+      ],
+      "antigravity_agent_prompt": "Write notebooks/03_model_training.ipynb (Colab-targeted, uses a GPU runtime). It should: mount Google Drive, clone/pull the isl-speak GitHub repo so src/models/lstm_classifier.py can be imported, load X_train/y_train/X_val/y_val from the packaged .npz files on Drive, wrap them in PyTorch TensorDataset/DataLoader objects, instantiate SignLSTMClassifier, move model and data to cuda if available, train with CrossEntropyLoss and Adam (lr=1e-3, weight_decay=1e-5) with a ReduceLROnPlateau scheduler, run up to 60 epochs with early stopping on validation accuracy (patience=10), log per-epoch train/val loss and accuracy, save the best-val-accuracy checkpoint to Drive as best_lstm_model.pt, and at the end plot loss and accuracy curves with matplotlib and save them to reports/figures/. Add a config cell at the top with all hyperparameters as named variables so they're easy to tweak per run.",
+      "acceptance_criteria": ["Notebook trains successfully on Colab GPU without local execution", "Best checkpoint is saved and downloadable", "Training/validation curves are plotted and saved", "Val accuracy is meaningfully above random-chance baseline (1/num_classes)"]
+    },
+
+    {
+      "phase": 6,
+      "title": "Evaluation & Error Analysis",
+      "goal": "Rigorously evaluate the trained model on the held-out test set and understand failure modes.",
+      "steps": [
+        "In notebooks/04_evaluation.ipynb (Colab), load the best checkpoint and run inference on X_test/y_test.",
+        "Compute overall accuracy, per-class precision/recall/F1 (sklearn.metrics.classification_report), and a confusion matrix (plot with seaborn heatmap, save to reports/figures/confusion_matrix.png).",
+        "Identify the worst-performing classes — inspect whether they're visually/semantically similar signs (common failure mode in sign language recognition) and note this in the report.",
+        "If accuracy is unsatisfactory, iterate: consider data augmentation (small random time-warping/jitter of landmark sequences), increasing sequence length, adding face-mesh features, or class-weighted loss — document what was tried.",
+        "Record final metrics in reports/final_report.md for the write-up/demo."
+      ],
+      "antigravity_agent_prompt": "Write notebooks/04_evaluation.ipynb for Colab. Load the best saved checkpoint (best_lstm_model.pt), run inference on the test split, and produce: overall test accuracy, a full sklearn classification_report (precision/recall/f1 per class), a confusion matrix plotted as a seaborn heatmap and saved to reports/figures/confusion_matrix.png, and a printed list of the 5 worst-performing classes by F1 score with their most common misclassification target. Save all computed metrics into a JSON file reports/test_metrics.json for later reference in the final report.",
+      "acceptance_criteria": ["Test metrics computed and saved", "Confusion matrix image saved", "Worst-performing classes identified and documented"]
+    },
+
+    {
+      "phase": 7,
+      "title": "Text-to-Speech (TTS) Integration",
+      "goal": "Convert recognized gesture/word sequences into audible speech, running entirely locally in Antigravity (no GPU/Colab needed).",
+      "steps": [
+        "Write src/inference/tts_engine.py wrapping pyttsx3 as the default offline TTS engine (works without internet, reliable for live demos).",
+        "Optionally add gTTS as an alternate higher-quality online voice, selectable via a config flag, with pygame or playsound to play the resulting mp3.",
+        "Write src/inference/sentence_buffer.py: a simple buffer that accumulates consecutive predicted words, applies basic smoothing (e.g., require the same prediction for N consecutive frames/windows before accepting it, to avoid flickering predictions triggering speech every frame), and flushes to speech after a pause or a fixed word count.",
+        "Unit test the TTS module standalone (feed it a hardcoded list of words like ['hello', 'thank', 'you'] and confirm audio plays)."
+      ],
+      "antigravity_agent_prompt": "Write src/inference/tts_engine.py with a class TTSEngine that wraps pyttsx3, exposing a speak(text: str) method, with configurable rate and voice, and a fallback to gTTS + playsound if pyttsx3 fails to initialize (e.g., on some Linux setups without espeak). Also write src/inference/sentence_buffer.py with a class SentenceBuffer that accepts a stream of per-window predicted class labels, only accepts a new word once it has appeared as the majority prediction across the last K windows (K configurable, default 5) to reduce flicker, avoids repeating the same word twice in a row, and exposes a flush() method returning the assembled sentence string and clearing the buffer. Include a small __main__ demo in tts_engine.py that speaks a test sentence when the file is run directly.",
+      "acceptance_criteria": ["TTS speaks a test sentence successfully on the local machine", "SentenceBuffer correctly filters flickering/noisy predictions in a unit test with mock prediction streams"]
+    },
+
+    {
+      "phase": 8,
+      "title": "Real-Time Inference Pipeline & Demo App",
+      "goal": "Wire everything into a working end-to-end local demo: webcam -> MediaPipe -> model -> word -> speech.",
+      "steps": [
+        "Write src/inference/realtime_predict.py: opens webcam feed with OpenCV, runs MediaPipe Holistic per frame, maintains a rolling buffer of the last SEQ_LEN frames' landmark vectors, runs the trained model (loaded from checkpoints/) on the rolling window at a fixed interval (e.g., every 10 frames) to get a prediction, feeds predictions into SentenceBuffer, and calls TTSEngine.speak() when the buffer flushes.",
+        "Build src/app/streamlit_app.py as the demo UI: webcam feed display with an overlay of detected landmarks, live predicted-word ticker, an 'Assembled Sentence' text box, and a Speak button (or automatic speech-on-flush).",
+        "Also support offline mode: upload a pre-recorded video file instead of live webcam, for reliable grading/demo purposes if live webcam isn't practical in the presentation room.",
+        "Test end-to-end locally with a few signs the demoer can perform live."
+      ],
+      "antigravity_agent_prompt": "Write src/inference/realtime_predict.py that: opens the webcam with OpenCV, runs MediaPipe Holistic per frame to extract the same feature vector format used in training, maintains a deque of the last SEQ_LEN frames, every N frames runs the loaded PyTorch model on the current window to get a class prediction and confidence score, pushes accepted predictions (above a confidence threshold, e.g. 0.6) into a SentenceBuffer instance, and calls TTSEngine.speak() whenever the buffer flushes a sentence. Then write src/app/streamlit_app.py: a Streamlit app with a sidebar to choose 'Live Webcam' or 'Upload Video' mode, a main panel showing the video feed with MediaPipe landmark overlays drawn via mediapipe.solutions.drawing_utils, a live-updating text area showing the current predicted word and assembled sentence, and a manual 'Speak Now' button as a fallback. Load the trained model checkpoint and class_index_to_label.json at app startup.",
+      "acceptance_criteria": ["Streamlit app launches locally with `streamlit run src/app/streamlit_app.py`", "Live webcam mode detects landmarks and produces predictions", "Upload-video mode works as a reliable fallback for demos", "Speech output plays for assembled sentences"]
+    },
+
+    {
+      "phase": 9,
+      "title": "Documentation, Report & Packaging",
+      "goal": "Produce the deliverables needed for submission/demo grading.",
+      "steps": [
+        "Finalize README.md: project overview, why ISL over ASL (novelty/impact framing), architecture diagram (can be a simple draw.io/Mermaid diagram embedded as an image), setup instructions split clearly into 'Local (Antigravity)' and 'Training (Colab)' sections, how to run the demo, and results summary table.",
+        "Write reports/final_report.md: problem statement, related work (cite INCLUDE paper, note ASL saturation vs ISL gap), dataset description, methodology (why keypoints over raw video), model architecture, training details/hyperparameters, results (accuracy, confusion matrix, per-class analysis), limitations, and future work (e.g., sentence-level grammar, more classes, mobile deployment).",
+        "Record a short demo video/GIF of the working pipeline and embed it in the README.",
+        "Clean up the repo: remove dead code, ensure requirements.txt is accurate, add clear inline comments, verify .gitignore keeps large data/checkpoints out of git history.",
+        "If a formal write-up PDF is required for submission, produce it from final_report.md (structured document deliverable) rather than a slide deck, per stated preference for plain-text/document outputs over generated presentation files unless a deck is explicitly required."
+      ],
+      "antigravity_agent_prompt": "Write a comprehensive README.md and reports/final_report.md for the isl-speak project. README.md should include: project title and one-paragraph pitch emphasizing the ISL-vs-ASL novelty angle, a Mermaid diagram block showing the pipeline (Video -> MediaPipe Landmarks -> LSTM/Transformer Classifier -> Sentence Buffer -> TTS), a clearly separated 'Local Setup (Antigravity)' section and 'Training (Google Colab)' section with exact commands, instructions to run the Streamlit demo, and a results table with test accuracy and best model name. final_report.md should be a structured academic-style report with sections: Abstract, Introduction & Motivation, Related Work, Dataset, Methodology, Model Architecture, Training Setup, Results & Evaluation, Limitations, Future Work, References (including the INCLUDE dataset paper).",
+      "acceptance_criteria": ["README fully explains local-vs-Colab split", "final_report.md is complete and ready to convert to PDF/Word if needed", "Repo is clean and reproducible by someone else following the README"]
+    }
+  ],
+
+  "cross_cutting_reminders_for_agent": [
+    "NEVER attempt to train the LSTM/Transformer model inside the Antigravity local environment — always generate/edit Colab notebook code and instruct the user to run it in the Colab browser tab.",
+    "Keep the feature-vector length and SEQ_LEN constants defined in exactly ONE shared config location (e.g., src/preprocessing/config.py) and import them everywhere (extraction, training, inference) to avoid shape mismatches between training and real-time inference.",
+    "Every time a model architecture changes, retrain on Colab — do not assume old checkpoints are compatible.",
+    "Keep raw video and extracted landmark arrays out of git; only track code, small metadata CSVs/JSONs, and final trained checkpoints via Git LFS or a Drive link in the README.",
+    "Prioritize getting phases 0-8 working end-to-end on a SMALL subset (e.g., 10-15 classes) before scaling to the full class list — a working small demo beats an incomplete large one, especially under hackathon/coursework deadlines.",
+    "Log any deviation from this plan (e.g., switching TensorFlow instead of PyTorch, changing SEQ_LEN) directly in README.md's 'Design Decisions' section so the final report stays consistent with the actual code."
+  ],
+
+  "novelty_and_presentation_talking_points": [
+    "ASL (American Sign Language) has dozens of mature open-source recognition projects and large well-known datasets; ISL has comparatively few deep-learning-based public projects despite India having one of the world's largest deaf populations — this is a genuine, citable accessibility gap.",
+    "Using MediaPipe keypoint sequences instead of raw video is a deliberate engineering trade-off for feasibility under Colab-free-tier / hackathon time constraints — frame this as efficient design, not a shortcut.",
+    "The end-to-end gesture-to-SPEECH (not just gesture-to-text) framing directly targets real-world accessibility: it lets a deaf signer 'speak' to someone who doesn't know sign language, which is the actual use case that matters."
+  ]
+}

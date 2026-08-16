@@ -1,0 +1,35 @@
+# Data & Datasets
+data/raw/*
+!data/raw/sample/.gitkeep
+data/landmarks/*
+!data/landmarks/.gitkeep
+data/splits/*.npz
+
+# Model Weights & Checkpoints
+checkpoints/*.pt
+checkpoints/*.pth
+
+# Environments & IDEs
+venv/
+.venv/
+env/
+.idea/
+.vscode/
+.DS_Store
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Media / Audio Artifacts
+*.mp3
+*.wav
+*.avi
+*.mp4
+
+# Reports figures output
+reports/figures/*
+!reports/figures/.gitkeep
