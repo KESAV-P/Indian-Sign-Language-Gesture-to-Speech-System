@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "ISL Speak",
+    "slug": "isl-speak",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#060A12",
+    "splash": {
+      "backgroundColor": "#060A12"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.kesav.islspeak",
+      "infoPlist": {
+        "NSCameraUsageDescription": "ISL Speak uses the camera to translate Indian Sign Language gestures on your device."
+      }
+    },
+    "android": {
+      "package": "com.kesav.islspeak",
+      "permissions": ["CAMERA"],
+      "backgroundColor": "#060A12"
+    },
+    "plugins": [
+      "expo-camera"
+    ]
+  }
+}

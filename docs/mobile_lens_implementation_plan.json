@@ -1,0 +1,732 @@
+{
+  "project": {
+    "name": "ISL-Speak Mobile Lens",
+    "objective": "Rebuild the current Streamlit demo into a professional Android and iOS camera-first mobile application that detects Indian Sign Language gestures continuously and displays live translation captions below the camera, similar in simplicity and responsiveness to Google Lens.",
+    "current_state": {
+      "repository_type": "Python research/prototype project",
+      "current_frontend": "Streamlit web app with WebRTC tab, upload tab, vocabulary tab, analytics tab, and architecture tab",
+      "current_model_pipeline": "MediaPipe Holistic landmarks, 45-frame rolling window, PyTorch BiLSTM or Transformer classifier, majority-vote sentence buffer, optional text-to-speech",
+      "current_assets": {
+        "lstm_checkpoint": "checkpoints/best_lstm_model.pt",
+        "transformer_checkpoint": "checkpoints/best_transformer_model.pt",
+        "class_mapping": "data/splits/class_index_to_label.json",
+        "landmark_dataset": "data/landmarks",
+        "splits": [
+          "data/splits/X_train.npz",
+          "data/splits/X_val.npz",
+          "data/splits/X_test.npz"
+        ]
+      },
+      "critical_limitations": [
+        "Streamlit is not the right runtime for a smooth Android/iOS production camera experience.",
+        "The live WebRTC callback processes frames but the UI caption widgets are not reliably updated from that async callback.",
+        "The interface is feature-heavy for a real user: model tabs, analytics, vocabulary explorer, upload mode, and demo badges distract from live translation.",
+        "Detection waits for a full 45-frame sequence and only runs every 4 frames, which creates startup delay and can feel like no detection.",
+        "The model may silently run with default random weights if checkpoints are missing, which makes detection appear broken instead of failing visibly.",
+        "No mobile model format exists yet; PyTorch checkpoints must be exported or wrapped for mobile inference.",
+        "No formal accuracy, latency, device, or lighting test kit is currently defined."
+      ]
+    },
+    "product_principles": [
+      "Camera is the product, not a feature inside a dashboard.",
+      "The first screen must immediately invite capture and translation.",
+      "Live caption must be visible below the camera at all times.",
+      "Controls must be minimal: camera flip, sound, clear caption, settings.",
+      "Detection status must be honest: scanning, hand not visible, low confidence, translated.",
+      "The app must run on real Android and iOS devices, not only desktop browsers.",
+      "Accessibility must be first-class: readable captions, high contrast, haptics, large tap targets, offline-first behavior, and low-friction permissions."
+    ]
+  },
+  "target_experience": {
+    "primary_flow": [
+      "User opens app.",
+      "Permission request appears only when needed and explains camera usage clearly.",
+      "Camera opens full screen.",
+      "A stable caption strip appears below the camera.",
+      "User performs a gesture.",
+      "The app shows immediate status: scanning, detected hand, recognizing, or translated text.",
+      "When a gesture is accepted, caption updates and optional speech plays.",
+      "User can clear the caption, pause detection, flip camera, or mute speech with one tap."
+    ],
+    "visual_direction": {
+      "style": "Professional, calm, camera-first, high contrast, no neon/glassmorphism demo styling.",
+      "inspiration": "Google Lens-like simplicity: live camera preview, light overlays, clear bottom caption.",
+      "layout": {
+        "top_bar": "Small brand text and status indicator only.",
+        "camera_area": "Full-bleed preview with optional subtle hand guide frame.",
+        "caption_area": "Persistent bottom caption panel outside or over the lower camera safe area.",
+        "controls": "Icon buttons for flip camera, mute, clear, history, settings."
+      },
+      "remove_visual_noise": [
+        "No large hero section.",
+        "No metric cards during normal use.",
+        "No badges advertising model accuracy on the capture screen.",
+        "No analytics charts in the main app experience.",
+        "No tabbed research dashboard as the primary interface.",
+        "No heavy dark neon gradients.",
+        "No cluttered OpenCV HUD baked into the camera frame."
+      ]
+    }
+  },
+  "features_to_remove_or_hide": {
+    "remove_from_primary_mobile_app": [
+      {
+        "feature": "Model architecture selector",
+        "reason": "End users should not choose between BiLSTM and Transformer. Ship one validated production model."
+      },
+      {
+        "feature": "Confidence threshold slider",
+        "reason": "Expose calibrated modes instead: balanced, faster, stricter. Keep exact threshold in developer settings only."
+      },
+      {
+        "feature": "Vocabulary explorer tab",
+        "reason": "Useful for documentation, not the live camera surface. Move to settings/help."
+      },
+      {
+        "feature": "Model analytics tab",
+        "reason": "Belongs in internal QA dashboard, not user-facing mobile app."
+      },
+      {
+        "feature": "Architecture/info tab",
+        "reason": "Belongs in README, website, or about page."
+      },
+      {
+        "feature": "Upload video clip mode",
+        "reason": "Useful for QA and dataset collection, but not needed for first mobile release."
+      },
+      {
+        "feature": "OpenCV text overlays",
+        "reason": "Native UI captions are more readable, localizable, accessible, and responsive."
+      },
+      {
+        "feature": "Desktop fallback webcam loop",
+        "reason": "Production target is Android/iOS native camera, not desktop capture."
+      }
+    ],
+    "keep_but_move_to_internal_tools": [
+      "Video upload batch evaluation",
+      "Vocabulary coverage viewer",
+      "Confusion matrix and per-class metrics",
+      "Threshold calibration controls",
+      "Debug landmark overlay",
+      "Frame-by-frame prediction trace"
+    ]
+  },
+  "recommended_architecture": {
+    "mobile_client": {
+      "recommended_stack": "React Native with Expo Dev Client or bare React Native",
+      "alternatives": [
+        {
+          "stack": "Flutter",
+          "when_to_choose": "If the team strongly prefers Dart and wants one rendering stack with mature camera plugins."
+        },
+        {
+          "stack": "Native Swift + Kotlin",
+          "when_to_choose": "If maximum device performance and platform-specific ML integration are more important than shared UI code."
+        }
+      ],
+      "core_libraries": [
+        "react-native-vision-camera for high-performance camera frames",
+        "react-native-worklets-core for frame processing off the UI thread",
+        "MediaPipe Tasks Vision or platform-native MediaPipe graph for hand/pose landmarks",
+        "ONNX Runtime Mobile or TensorFlow Lite for classifier inference",
+        "Native text-to-speech APIs: AVSpeechSynthesizer on iOS and TextToSpeech on Android"
+      ],
+      "app_surfaces": [
+        "LiveTranslateScreen",
+        "PermissionScreen",
+        "SettingsScreen",
+        "HistoryScreen",
+        "DebugLabScreen gated behind developer mode"
+      ]
+    },
+    "ml_runtime": {
+      "preferred_path": "Export trained sequence classifier to ONNX, validate numerical parity, then run with ONNX Runtime Mobile.",
+      "fallback_path": "Export to TensorFlow Lite if MediaPipe/TFLite integration becomes simpler for mobile deployment.",
+      "model_files": [
+        "gesture_classifier.onnx",
+        "gesture_classifier_int8.onnx",
+        "class_index_to_label.json",
+        "normalization_stats.json",
+        "model_manifest.json"
+      ],
+      "inference_location": "On-device for privacy, latency, offline use, and app-store friendliness.",
+      "server_inference_policy": "Do not depend on server inference for MVP. Optional cloud evaluation can exist only as opt-in developer tooling."
+    },
+    "backend": {
+      "mvp": "No backend required for live translation.",
+      "future_optional_services": [
+        "Anonymous crash and performance telemetry",
+        "Opt-in dataset contribution pipeline",
+        "Model update manifest and staged rollout",
+        "Admin QA dashboard"
+      ]
+    }
+  },
+  "modules": {
+    "camera": {
+      "responsibilities": [
+        "Request and persist camera permission state.",
+        "Open rear camera by default unless front camera is better for signing ergonomics.",
+        "Support camera flip.",
+        "Provide frame stream at controlled resolution.",
+        "Keep preview responsive even if inference slows."
+      ],
+      "requirements": {
+        "target_fps_preview": 30,
+        "target_fps_inference": "10-20 depending on device class",
+        "resolution": "Start at 640x480 or 720p, benchmark both.",
+        "orientation": "Portrait first, support landscape later.",
+        "mirroring": "Front camera preview may be mirrored, but landmark coordinates passed to model must match training orientation policy."
+      }
+    },
+    "landmark_extraction": {
+      "responsibilities": [
+        "Detect pose and both hands from camera frames.",
+        "Emit exactly 258 features per processed frame to match the trained model.",
+        "Report landmark quality signals: left hand visible, right hand visible, pose visible, tracking confidence.",
+        "Normalize coordinates consistently with training."
+      ],
+      "requirements": {
+        "feature_shape": [258],
+        "sequence_length": 45,
+        "missing_landmarks": "Use zero vectors only when missing landmarks are expected and model was trained with the same policy.",
+        "quality_gate": "Do not classify if no hand is visible for a minimum number of recent frames."
+      },
+      "risk_items": [
+        "MediaPipe Python Holistic behavior may not match MediaPipe mobile task outputs exactly.",
+        "Left/right hand assignment can change under mirrored camera previews.",
+        "Different camera focal lengths and lighting can shift landmarks enough to reduce accuracy."
+      ]
+    },
+    "sequence_buffer": {
+      "responsibilities": [
+        "Maintain rolling 45-frame window.",
+        "Warm up quickly and show progress while filling.",
+        "Run inference at stride tuned for latency and battery.",
+        "Segment gestures from idle or transition motion."
+      ],
+      "recommended_changes": [
+        "Add warm-up caption: hold gesture for N frames.",
+        "Add motion stability scoring before accepting a prediction.",
+        "Add idle/background class or gesture-boundary detector.",
+        "Keep multiple recent logits for smoothing instead of only majority vote labels."
+      ]
+    },
+    "classifier": {
+      "responsibilities": [
+        "Load model and label map from bundled assets.",
+        "Run inference on normalized 45x258 tensor.",
+        "Return top-k predictions and confidence.",
+        "Fail visibly if model assets are missing or incompatible."
+      ],
+      "acceptance_rules": {
+        "minimum_confidence": "Calibrated per model, not guessed in UI.",
+        "minimum_stability_frames": "At least 3 consistent inference windows before appending caption.",
+        "duplicate_suppression": "Do not append same word repeatedly unless user resets or a clear gesture boundary occurs.",
+        "low_confidence_behavior": "Show scanning or suggestion state, never append uncertain text."
+      }
+    },
+    "caption_engine": {
+      "responsibilities": [
+        "Show latest accepted translation as large readable caption.",
+        "Show transient status without polluting final sentence.",
+        "Provide clear and undo actions.",
+        "Optionally speak accepted text."
+      ],
+      "states": [
+        "permission_needed",
+        "camera_loading",
+        "scanning",
+        "hand_not_visible",
+        "hold_steady",
+        "recognizing",
+        "translated",
+        "low_confidence",
+        "model_error"
+      ]
+    },
+    "tts": {
+      "responsibilities": [
+        "Speak accepted words or phrases without blocking detection.",
+        "Respect mute state.",
+        "Avoid repeating the same word too frequently.",
+        "Use platform-native voices."
+      ],
+      "requirements": {
+        "default": "Muted or user-selectable depending on accessibility testing.",
+        "latency": "Speech starts within 300 ms after acceptance.",
+        "privacy": "No network TTS dependency in MVP."
+      }
+    },
+    "debug_lab": {
+      "responsibilities": [
+        "Show landmark overlay.",
+        "Show top-k probabilities.",
+        "Show inference latency.",
+        "Record short local test clips with user consent.",
+        "Export prediction traces for QA."
+      ],
+      "visibility": "Hidden behind developer mode; never part of normal user journey."
+    }
+  },
+  "implementation_stages": [
+    {
+      "stage": 0,
+      "name": "Detection Triage In Current Prototype",
+      "goal": "Prove whether the current checkpoint, landmark extractor, and label map can produce correct predictions before rebuilding mobile.",
+      "tasks": [
+        "Add startup validation that checkpoint exists, label count matches model output, and model is in eval mode.",
+        "Add a debug method that runs inference on known validation landmark samples and prints top-5 predictions.",
+        "Test 20 known .npy files from data/landmarks and verify predicted labels.",
+        "Add visible errors instead of silently using random default weights.",
+        "Lower temporary threshold to 0.30 only for diagnosis, not production.",
+        "Log landmark visibility counts per frame to confirm hands are detected.",
+        "Verify whether camera preview is mirrored compared with training videos.",
+        "Measure time until first prediction with 45-frame window."
+      ],
+      "exit_criteria": [
+        "Known landmark samples classify correctly above target confidence.",
+        "Live camera shows hands detected in at least 80 percent of frames during a clear gesture.",
+        "Model asset mismatch and missing checkpoint cases fail loudly."
+      ]
+    },
+    {
+      "stage": 1,
+      "name": "Simplify Web Prototype To Lens UI",
+      "goal": "Remove demo clutter and make the current app express the target product shape.",
+      "tasks": [
+        "Replace tabs with one Live Translation screen.",
+        "Move upload, analytics, vocabulary, and architecture pages to internal/dev mode or remove from app.",
+        "Remove neon/glassmorphism styling.",
+        "Use a full-width camera area and persistent caption below it.",
+        "Display detection state next to caption.",
+        "Add clear caption, mute, reset detection, and camera start controls.",
+        "Update async WebRTC state handling so predictions appear in the caption area.",
+        "Add checkpoint/model health status."
+      ],
+      "exit_criteria": [
+        "User can open the page, start camera, sign, and see caption below camera without visiting any other tab.",
+        "No research-dashboard elements appear in the normal user flow."
+      ]
+    },
+    {
+      "stage": 2,
+      "name": "Model Export And Parity",
+      "goal": "Create a mobile-loadable model with verified parity against PyTorch.",
+      "tasks": [
+        "Write export script for BiLSTM checkpoint to ONNX with input shape 1x45x258.",
+        "Export dynamic batch optional, fixed sequence length mandatory.",
+        "Create model_manifest.json with version, class count, seq_len, feature_count, training date, and thresholds.",
+        "Run PyTorch vs ONNX parity on at least 500 validation samples.",
+        "Quantize INT8 or FP16 variant and compare accuracy and latency.",
+        "Select production model based on accuracy, latency, size, and stability.",
+        "Bundle label map and normalization stats."
+      ],
+      "exit_criteria": [
+        "ONNX top-1 agreement with PyTorch is at least 99 percent on validation subset.",
+        "Mobile model package loads in a standalone inference test.",
+        "Accuracy drop after quantization is less than 1.5 percentage points, or quantization is deferred."
+      ]
+    },
+    {
+      "stage": 3,
+      "name": "Mobile App Foundation",
+      "goal": "Build the real Android/iOS client shell.",
+      "tasks": [
+        "Create React Native app structure.",
+        "Add camera permission flow.",
+        "Add full-screen camera preview.",
+        "Add bottom caption panel respecting safe areas.",
+        "Add minimal controls: flip camera, mute, clear, settings.",
+        "Add app theming with professional accessible colors.",
+        "Add navigation only where needed.",
+        "Add crash-safe model asset loading."
+      ],
+      "exit_criteria": [
+        "Runs on a real Android device.",
+        "Runs on a real iPhone.",
+        "Camera preview remains smooth while the caption UI updates."
+      ]
+    },
+    {
+      "stage": 4,
+      "name": "On-Device Landmark And Inference Integration",
+      "goal": "Connect camera frames to landmarks, sequence buffer, classifier, and caption engine on-device.",
+      "tasks": [
+        "Integrate MediaPipe mobile landmark extraction.",
+        "Map mobile landmarks to the exact 258-feature format.",
+        "Implement rolling sequence buffer.",
+        "Run ONNX inference off the UI thread.",
+        "Implement smoothing and acceptance logic.",
+        "Update caption in native UI.",
+        "Add TTS for accepted predictions.",
+        "Add debug overlay toggle for landmarks and top-k labels."
+      ],
+      "exit_criteria": [
+        "A known trained gesture updates caption on Android and iOS.",
+        "Median end-to-end latency is under 250 ms after warm-up on mid-range Android.",
+        "UI thread remains responsive during inference."
+      ]
+    },
+    {
+      "stage": 5,
+      "name": "Accuracy Hardening",
+      "goal": "Make detection reliable for real users, not just validation files.",
+      "tasks": [
+        "Create real-device test set across users, lighting, backgrounds, skin tones, distance, and camera orientations.",
+        "Add idle/background samples.",
+        "Add hand visibility quality gates.",
+        "Calibrate confidence thresholds per class.",
+        "Tune smoothing window and stride.",
+        "Analyze confusion pairs and collect targeted data.",
+        "Retrain with mobile-captured landmarks if domain shift is high.",
+        "Add data augmentation: coordinate noise, frame drop, temporal speed changes, mirror policy, scale/translation jitter."
+      ],
+      "exit_criteria": [
+        "Per-class F1 reaches target for launch vocabulary.",
+        "False caption insertion rate is below agreed threshold during idle movement.",
+        "Model works in indoor daylight, warm artificial light, and moderate low light."
+      ]
+    },
+    {
+      "stage": 6,
+      "name": "Production Readiness",
+      "goal": "Prepare the app for beta distribution and app-store review.",
+      "tasks": [
+        "Add privacy policy and camera usage copy.",
+        "Add offline-first guarantee messaging.",
+        "Add app icons and launch screens.",
+        "Add build pipelines for Android and iOS.",
+        "Add error reporting without collecting video by default.",
+        "Add performance telemetry only with privacy-safe metrics.",
+        "Run accessibility audit.",
+        "Run battery and thermal tests.",
+        "Prepare TestFlight and Google Play internal testing releases."
+      ],
+      "exit_criteria": [
+        "Installable builds are available for Android and iOS testers.",
+        "No video frames leave the device in MVP.",
+        "Known critical crashes are zero for beta test pass."
+      ]
+    }
+  ],
+  "algorithms": {
+    "frame_processing_loop": {
+      "description": "Process camera frames at a controlled inference FPS while keeping preview at native FPS.",
+      "steps": [
+        "Receive camera frame.",
+        "Downscale or crop to landmark extractor input size.",
+        "Run landmark extraction off UI thread.",
+        "Compute landmark quality score.",
+        "If quality is below gate, update state to hand_not_visible or hold_steady.",
+        "Convert landmarks to 258-feature vector.",
+        "Append vector to rolling 45-frame sequence.",
+        "When sequence is full and stride condition is met, run classifier.",
+        "Smooth logits over recent inference windows.",
+        "Apply confidence and stability acceptance rules.",
+        "Update caption and optional TTS."
+      ]
+    },
+    "landmark_quality_score": {
+      "inputs": [
+        "left_hand_landmarks_present",
+        "right_hand_landmarks_present",
+        "pose_landmarks_present",
+        "tracking_confidence",
+        "hand_bbox_size",
+        "motion_blur_estimate",
+        "frame_brightness"
+      ],
+      "formula": "weighted_score = hand_presence_weight + tracking_weight + bbox_weight + brightness_weight - blur_penalty",
+      "minimum_for_classification": 0.65,
+      "user_feedback": {
+        "below_0_30": "Move hand into view",
+        "0_30_to_0_65": "Hold steady",
+        "above_0_65": "Scanning"
+      }
+    },
+    "prediction_smoothing": {
+      "method": "Temporal logit smoothing plus stable top-1 confirmation",
+      "parameters": {
+        "logit_window": 5,
+        "stable_windows_required": 3,
+        "default_confidence_threshold": 0.60,
+        "strict_confidence_threshold": 0.75,
+        "fast_confidence_threshold": 0.50
+      },
+      "rules": [
+        "Average probabilities over recent windows.",
+        "Accept only if the same label remains top-1 for stable_windows_required windows.",
+        "Reject background and idle labels from caption.",
+        "Suppress duplicate words until a boundary or cooldown occurs.",
+        "Clear unstable low-confidence candidates from the visible final caption."
+      ]
+    },
+    "gesture_boundary_detection": {
+      "mvp": "Use cooldown plus hand-motion stability.",
+      "future": "Train a separate boundary/idle detector or include a background class.",
+      "signals": [
+        "hand velocity",
+        "landmark variance",
+        "confidence drop after accepted word",
+        "time since last accepted word",
+        "idle/background class probability"
+      ]
+    },
+    "calibration": {
+      "method": "Temperature scaling and per-class threshold tuning on validation and real-device sets.",
+      "outputs": [
+        "global_temperature",
+        "per_class_thresholds",
+        "confusion_pair_overrides",
+        "launch_acceptance_profile"
+      ]
+    }
+  },
+  "testing_kits": {
+    "unit_tests": [
+      "Feature vector shape is exactly 258.",
+      "Sequence tensor shape is exactly 1x45x258.",
+      "Missing landmarks produce expected zero sections.",
+      "Label map count matches model output classes.",
+      "Sentence buffer suppresses duplicates.",
+      "Caption engine state transitions are deterministic.",
+      "Model asset loader fails visibly on missing files."
+    ],
+    "model_tests": [
+      "PyTorch checkpoint loads and predicts known validation samples.",
+      "ONNX parity top-1 agreement against PyTorch.",
+      "Quantized model accuracy comparison.",
+      "Per-class precision, recall, F1, support.",
+      "Confusion matrix for all classes.",
+      "Top-3 accuracy for ambiguous gestures.",
+      "Confidence calibration curve.",
+      "Expected calibration error.",
+      "Idle false positive rate."
+    ],
+    "mobile_integration_tests": [
+      "Camera permission accepted.",
+      "Camera permission denied.",
+      "Camera flip works.",
+      "Model loads on cold start.",
+      "Caption updates within latency budget.",
+      "TTS plays without blocking camera.",
+      "App survives background and resume.",
+      "App handles orientation changes.",
+      "Low-memory restart does not corrupt state."
+    ],
+    "device_matrix": {
+      "android": [
+        "Low-end Android with 4 GB RAM",
+        "Mid-range Android",
+        "Recent flagship Android"
+      ],
+      "ios": [
+        "Older supported iPhone",
+        "Recent standard iPhone",
+        "Large-screen iPhone"
+      ],
+      "conditions": [
+        "Indoor daylight",
+        "Warm artificial light",
+        "Low light",
+        "Backlit subject",
+        "Plain background",
+        "Busy background",
+        "Standing signer",
+        "Seated signer",
+        "Front camera",
+        "Rear camera"
+      ]
+    },
+    "ux_tests": [
+      "First-time user can start detection without instruction.",
+      "Caption remains readable with one hand holding phone.",
+      "Controls are reachable with thumb.",
+      "No important text overlaps safe areas.",
+      "User understands when hand is not visible.",
+      "User understands when confidence is low.",
+      "Clear caption action is obvious but not accidentally triggered.",
+      "Mute state is obvious."
+    ],
+    "performance_tests": [
+      "Cold app start time.",
+      "Camera open time.",
+      "Time to first landmark.",
+      "Time to first prediction.",
+      "Median and p95 inference latency.",
+      "Preview FPS.",
+      "Dropped frame rate.",
+      "Battery drain over 15 minutes.",
+      "Thermal throttling over 20 minutes.",
+      "Memory usage after 30 minutes."
+    ]
+  },
+  "accuracy_targets": {
+    "mvp_internal": {
+      "offline_test_accuracy": ">= 90 percent on held-out landmark test split",
+      "real_device_top1_accuracy": ">= 80 percent for launch vocabulary",
+      "real_device_top3_accuracy": ">= 92 percent for launch vocabulary",
+      "idle_false_caption_rate": "<= 1 false accepted word per 3 minutes",
+      "median_detection_latency_after_warmup": "<= 500 ms"
+    },
+    "beta": {
+      "real_device_top1_accuracy": ">= 87 percent",
+      "per_class_f1": ">= 0.75 for every shipped class",
+      "idle_false_caption_rate": "<= 1 false accepted word per 5 minutes",
+      "median_detection_latency_after_warmup": "<= 350 ms"
+    },
+    "production": {
+      "real_device_top1_accuracy": ">= 92 percent for supported vocabulary and conditions",
+      "per_class_f1": ">= 0.85 for every shipped class",
+      "idle_false_caption_rate": "<= 1 false accepted word per 10 minutes",
+      "median_detection_latency_after_warmup": "<= 250 ms",
+      "crash_free_sessions": ">= 99.5 percent"
+    }
+  },
+  "data_strategy": {
+    "immediate_actions": [
+      "Audit existing labels for duplicates, casing differences, and numeric prefixes.",
+      "Count samples per class and flag imbalance.",
+      "Run confusion analysis on current checkpoints.",
+      "Create a real-device collection protocol.",
+      "Capture the same gestures using front and rear cameras.",
+      "Capture multiple users and lighting conditions.",
+      "Add idle, transition, and non-sign hand movement samples."
+    ],
+    "annotation_schema": {
+      "sample_id": "string",
+      "gesture_label": "string",
+      "signer_id": "anonymous string",
+      "device": "string",
+      "camera": "front or rear",
+      "lighting": "daylight, artificial, low_light, backlit",
+      "background": "plain or busy",
+      "distance_cm": "number",
+      "orientation": "portrait or landscape",
+      "notes": "string",
+      "consent": "boolean"
+    },
+    "quality_filters": [
+      "Reject samples with no detectable hand landmarks for more than 50 percent of frames.",
+      "Reject mislabeled or ambiguous gesture clips after human review.",
+      "Balance classes before training.",
+      "Keep signer-disjoint train/validation/test split to avoid inflated accuracy."
+    ]
+  },
+  "security_privacy_accessibility": {
+    "privacy": [
+      "Process camera frames on-device.",
+      "Do not upload video by default.",
+      "Make dataset contribution opt-in only.",
+      "Do not store captured clips unless user explicitly chooses to submit or save.",
+      "Keep telemetry free of raw frames and biometric landmark traces unless consented for research."
+    ],
+    "permissions": [
+      "Camera permission required for translation.",
+      "Microphone permission not required.",
+      "Network not required for MVP translation.",
+      "Speech uses device TTS."
+    ],
+    "accessibility": [
+      "Caption text minimum 20 sp equivalent.",
+      "High contrast caption panel.",
+      "Support system font scaling.",
+      "Tap targets at least 44x44 points.",
+      "Haptic confirmation when word is accepted.",
+      "Voice output optional and easily muted.",
+      "No essential information conveyed only through color."
+    ]
+  },
+  "risks_and_implications": [
+    {
+      "risk": "Research accuracy does not transfer to mobile live camera.",
+      "implication": "The app may appear broken even if notebook accuracy is high.",
+      "mitigation": "Build real-device test set and retrain/calibrate with mobile landmark distribution."
+    },
+    {
+      "risk": "MediaPipe mobile landmarks differ from Python Holistic landmarks.",
+      "implication": "Model input distribution shifts and predictions degrade.",
+      "mitigation": "Compare Python vs mobile landmark vectors on the same test clips and normalize mapping exactly."
+    },
+    {
+      "risk": "45-frame window creates visible delay.",
+      "implication": "Users think detection is not working.",
+      "mitigation": "Show warm-up status, tune inference FPS, evaluate shorter sequence models, and use streaming smoothing."
+    },
+    {
+      "risk": "No background/idle class.",
+      "implication": "Random hand motion may be converted into words.",
+      "mitigation": "Add background samples and boundary detection."
+    },
+    {
+      "risk": "Too many gesture classes for limited data.",
+      "implication": "Confusing pairs reduce trust.",
+      "mitigation": "Ship a smaller reliable launch vocabulary first, then expand."
+    },
+    {
+      "risk": "Battery drain and thermal throttling.",
+      "implication": "Long sessions become laggy.",
+      "mitigation": "Throttle inference FPS, use quantized model, avoid UI-thread work, benchmark devices."
+    },
+    {
+      "risk": "User-facing UI overexplains internals.",
+      "implication": "The app feels like a project demo, not an assistive tool.",
+      "mitigation": "Keep technical details in internal debug mode and make camera plus caption the core."
+    }
+  ],
+  "definition_of_done": {
+    "prototype_fix": [
+      "Current prototype visibly detects known gestures or reports exact failure reason.",
+      "Caption appears below camera.",
+      "Unwanted demo tabs are removed or hidden."
+    ],
+    "mobile_mvp": [
+      "Android and iOS builds run on real devices.",
+      "Live camera opens reliably.",
+      "On-device model loads without network.",
+      "Gesture caption updates below camera.",
+      "TTS works when enabled.",
+      "Core UX is clean and accessible.",
+      "Internal debug mode can diagnose landmark and prediction issues."
+    ],
+    "beta_release": [
+      "Accuracy targets are met on real-device test kit.",
+      "Latency and battery targets are met.",
+      "Privacy policy and app permissions are ready.",
+      "Crash rate is acceptable for external testers.",
+      "Known unsupported conditions are documented inside release notes, not buried in code."
+    ]
+  },
+  "next_actions": [
+    {
+      "priority": 1,
+      "action": "Run model sanity evaluation on existing validation landmarks to confirm the checkpoint actually predicts correctly."
+    },
+    {
+      "priority": 2,
+      "action": "Patch the current Streamlit live view so the caption below camera updates from prediction state."
+    },
+    {
+      "priority": 3,
+      "action": "Strip the frontend down to a single camera-first translation screen."
+    },
+    {
+      "priority": 4,
+      "action": "Export BiLSTM to ONNX and create a parity test."
+    },
+    {
+      "priority": 5,
+      "action": "Start the mobile app shell with camera preview and caption panel."
+    },
+    {
+      "priority": 6,
+      "action": "Integrate on-device landmarks and model inference."
+    },
+    {
+      "priority": 7,
+      "action": "Build the real-device accuracy and latency test kit before expanding features."
+    }
+  ]
+}

@@ -13,6 +13,10 @@ checkpoints/*.pth
 venv/
 .venv/
 env/
+node_modules/
+**/node_modules/
+.expo/
+**/.expo/
 .idea/
 .vscode/
 .DS_Store

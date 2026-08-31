@@ -13,7 +13,7 @@ import cv2
 import torch
 import numpy as np
 from collections import deque
-from typing import Optional, Dict, Tuple, List
+from typing import Optional, Dict, Tuple, List, Any
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if PROJECT_ROOT not in sys.path:
@@ -59,6 +59,14 @@ class RealtimeGesturePredictor:
         self.frame_count = 0
         self.last_predicted_word = "Waiting for gesture..."
         self.last_confidence = 0.0
+        self.last_status = "warming_up"
+        self.last_quality: Dict[str, Any] = {
+            "pose_visible": False,
+            "left_hand_visible": False,
+            "right_hand_visible": False,
+            "hand_visible": False,
+            "sequence_fill": 0.0,
+        }
 
         # Rolling landmark buffer
         self.landmark_window = deque(maxlen=SEQ_LEN)
@@ -82,18 +90,47 @@ class RealtimeGesturePredictor:
             seq_len=SEQ_LEN,
         )
 
-        if os.path.exists(checkpoint_path):
-            self.model, _ = load_checkpoint(checkpoint_path, self.model, device=self.device)
-            print(f"Loaded trained checkpoint from {checkpoint_path} ({self.num_classes} classes)")
-        else:
-            print(f"Warning: Checkpoint {checkpoint_path} not found. Running with default weights.")
-            self.model.to(self.device)
-            self.model.eval()
+        if not os.path.exists(checkpoint_path):
+            raise FileNotFoundError(
+                f"Model checkpoint not found: {checkpoint_path}. "
+                "Live detection cannot run with untrained default weights."
+            )
+
+        self.model, _ = load_checkpoint(checkpoint_path, self.model, device=self.device)
+        print(f"Loaded trained checkpoint from {checkpoint_path} ({self.num_classes} classes)")
 
         # Initialize MediaPipe, SentenceBuffer, and TTS
         self.extractor = LandmarkExtractor()
         self.buffer = SentenceBuffer(window_size=4, min_confidence=confidence_threshold)
         self.tts = TTSEngine() if enable_tts else None
+
+    @staticmethod
+    def landmark_quality(results, sequence_fill: float) -> Dict[str, Any]:
+        """Return simple visibility signals for UI feedback and debugging."""
+        pose_visible = bool(getattr(results, "pose_landmarks", None))
+        left_hand_visible = bool(getattr(results, "left_hand_landmarks", None))
+        right_hand_visible = bool(getattr(results, "right_hand_landmarks", None))
+        hand_visible = left_hand_visible or right_hand_visible
+        return {
+            "pose_visible": pose_visible,
+            "left_hand_visible": left_hand_visible,
+            "right_hand_visible": right_hand_visible,
+            "hand_visible": hand_visible,
+            "sequence_fill": round(float(sequence_fill), 3),
+        }
+
+    def health_report(self) -> Dict[str, Any]:
+        """Expose runtime readiness without requiring users to inspect logs."""
+        return {
+            "device": str(self.device),
+            "classes": self.num_classes,
+            "sequence_length": self.seq_len,
+            "features": self.total_features,
+            "confidence_threshold": self.confidence_threshold,
+            "window_stride": self.window_stride,
+            "mediapipe_ready": bool(self.extractor.holistic),
+            "tts_enabled": bool(self.enable_tts and self.tts),
+        }
 
     def draw_landmarks_and_hud(
         self,
@@ -185,9 +222,19 @@ class RealtimeGesturePredictor:
         
         feature_vector = self.extractor.extract_frame_landmarks(frame_bgr, results=results)
         self.landmark_window.append(feature_vector)
+        sequence_fill = len(self.landmark_window) / float(self.seq_len)
+        self.last_quality = self.landmark_quality(results, sequence_fill)
 
         current_pred_word = self.last_predicted_word
         confidence = self.last_confidence
+        if not self.last_quality["hand_visible"]:
+            current_pred_word = "Show your hand"
+            self.last_status = "hand_not_visible"
+        elif len(self.landmark_window) < self.seq_len:
+            current_pred_word = f"Hold steady ({int(sequence_fill * 100)}%)"
+            self.last_status = "warming_up"
+        else:
+            self.last_status = "scanning"
 
         # 2. Perform sequence classification on stride window
         if len(self.landmark_window) == self.seq_len and (self.frame_count % self.window_stride == 0):
@@ -206,12 +253,14 @@ class RealtimeGesturePredictor:
 
                 if confidence >= self.confidence_threshold:
                     current_pred_word = predicted_class
+                    self.last_status = "translated"
                     accepted_word = self.buffer.add_prediction(predicted_class, confidence)
 
                     if accepted_word and self.enable_tts and self.tts:
                         self.tts.speak(accepted_word, async_mode=True)
                 else:
                     current_pred_word = f"Scanning ({confidence*100:.0f}%)"
+                    self.last_status = "low_confidence"
 
                 self.last_predicted_word = current_pred_word
                 self.last_confidence = confidence
@@ -232,6 +281,14 @@ class RealtimeGesturePredictor:
         self.frame_count = 0
         self.last_predicted_word = "Waiting for gesture..."
         self.last_confidence = 0.0
+        self.last_status = "warming_up"
+        self.last_quality = {
+            "pose_visible": False,
+            "left_hand_visible": False,
+            "right_hand_visible": False,
+            "hand_visible": False,
+            "sequence_fill": 0.0,
+        }
 
     def close(self):
         self.extractor.close()
