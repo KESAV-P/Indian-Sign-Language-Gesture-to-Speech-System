@@ -199,21 +199,26 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-with st.expander("Detection settings", expanded=False):
-    col_a, col_b, col_c = st.columns([1, 1, 1])
-    with col_a:
-        model_choice = st.selectbox("Model", ["Transformer", "BiLSTM"], index=0)
-    with col_b:
-        detection_mode = st.selectbox("Mode", ["Faster", "Balanced", "Stricter"], index=0)
-    with col_c:
-        enable_tts = st.toggle("Speak captions", value=False)
+model_choice = "Transformer"
+confidence_threshold = 0.35
 
-threshold_by_mode = {
-    "Faster": 0.35,
-    "Balanced": 0.45,
-    "Stricter": 0.60,
-}
-confidence_threshold = threshold_by_mode[detection_mode]
+controls = st.columns([1, 1, 1])
+with controls[0]:
+    enable_tts = st.toggle("Speak captions", value=False)
+with controls[1]:
+    if st.button("Clear caption", use_container_width=True):
+        if 'predictor' in locals():
+            predictor.reset_buffer()
+        st.session_state.caption_snapshot = {
+            "status": "warming_up",
+            "word": "Point the camera at a clear ISL gesture",
+            "confidence": 0.0,
+            "sentence": "",
+            "quality": {},
+        }
+with controls[2]:
+    st.write("")
+
 
 try:
     predictor = load_predictor(model_choice, confidence_threshold, enable_tts)
@@ -236,21 +241,6 @@ if "caption_snapshot" not in st.session_state:
         "quality": predictor.last_quality,
     }
 
-controls = st.columns([1, 1, 1])
-with controls[0]:
-    if st.button("Clear caption", use_container_width=True):
-        predictor.reset_buffer()
-        st.session_state.caption_snapshot = {
-            "status": "warming_up",
-            "word": "Point the camera at a clear ISL gesture",
-            "confidence": 0.0,
-            "sentence": "",
-            "quality": predictor.last_quality,
-        }
-with controls[1]:
-    show_debug = st.toggle("Debug", value=False)
-with controls[2]:
-    st.write("")
 
 caption_box = st.empty()
 
@@ -347,17 +337,3 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if show_debug:
-    health = predictor.health_report()
-    vocab = load_vocabulary()
-    st.divider()
-    st.subheader("Debug")
-    st.json(
-        {
-            "health": health,
-            "last_quality": predictor.last_quality,
-            "last_status": predictor.last_status,
-            "supported_words": len(vocab),
-            "first_words": vocab[:16],
-        }
-    )
