@@ -28,16 +28,26 @@ from src.preprocessing.config import (
     NUM_EPOCHS,
     PATIENCE,
 )
+from src.preprocessing.augment import augment_dataset
 
 
 
-def load_dataset(splits_dir: str):
-    """Loads X_train, y_train, X_val, y_val, and class mapping."""
+def load_dataset(splits_dir: str, augment_train: bool = True, aug_copies: int = 9):
+    """Loads X_train, y_train, X_val, y_val, and class mapping.
+    
+    If augment_train=True, applies data augmentation to training set only.
+    aug_copies: how many augmented copies per original sample (default 9 → 10× total).
+    """
     train_data = np.load(os.path.join(splits_dir, "X_train.npz"))
     val_data = np.load(os.path.join(splits_dir, "X_val.npz"))
 
     X_train, y_train = train_data["X"], train_data["y"]
     X_val, y_val = val_data["X"], val_data["y"]
+
+    if augment_train:
+        orig_count = len(X_train)
+        X_train, y_train = augment_dataset(X_train, y_train, copies_per_sample=aug_copies)
+        print(f"Augmented training set: {orig_count} → {len(X_train)} samples ({aug_copies+1}× copies)")
 
     mapping_json = os.path.join(splits_dir, "class_index_to_label.json")
     if os.path.exists(mapping_json):
@@ -50,6 +60,7 @@ def load_dataset(splits_dir: str):
     return X_train, y_train, X_val, y_val, num_classes
 
 
+
 def train_model(
     model_type: str = "lstm",
     splits_dir: str = "data/splits",
@@ -59,11 +70,15 @@ def train_model(
     epochs: int = NUM_EPOCHS,
     lr: float = LEARNING_RATE,
     patience: int = PATIENCE,
+    augment_train: bool = True,
+    aug_copies: int = 9,
 ):
     os.makedirs(checkpoint_dir, exist_ok=True)
     os.makedirs(figures_dir, exist_ok=True)
 
-    X_train, y_train, X_val, y_val, num_classes = load_dataset(splits_dir)
+    X_train, y_train, X_val, y_val, num_classes = load_dataset(
+        splits_dir, augment_train=augment_train, aug_copies=aug_copies
+    )
 
     train_dataset = TensorDataset(torch.tensor(X_train, dtype=torch.float32), torch.tensor(y_train, dtype=torch.long))
     val_dataset = TensorDataset(torch.tensor(X_val, dtype=torch.float32), torch.tensor(y_val, dtype=torch.long))

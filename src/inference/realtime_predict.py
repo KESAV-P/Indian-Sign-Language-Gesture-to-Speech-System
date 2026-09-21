@@ -109,9 +109,9 @@ class RealtimeGesturePredictor:
         # min_confidence matched to confidence_threshold so borderline
         # predictions (e.g. 0.45–0.50) are not silently discarded by the buffer.
         self.buffer = SentenceBuffer(
-            window_size=5,           # need 5 consecutive model observations
-            min_confidence=0.65,     # only feed high-confidence predictions into votes
-            min_frequency=4,         # 4 out of 5 must agree — blocks single-class runs
+            window_size=3,           # 3 consecutive model observations
+            min_confidence=0.35,     # accept at 35%+ confidence (model scores ~35-50%)
+            min_frequency=2,         # 2 out of 3 must agree
             repeat_cooldown=2,       # same word needs 2 different words between repeats
         )
         self.tts = TTSEngine() if enable_tts else None

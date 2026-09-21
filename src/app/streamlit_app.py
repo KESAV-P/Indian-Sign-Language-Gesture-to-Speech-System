@@ -202,9 +202,9 @@ st.markdown(
 with st.expander("Detection settings", expanded=False):
     col_a, col_b, col_c = st.columns([1, 1, 1])
     with col_a:
-        model_choice = st.selectbox("Model", ["BiLSTM", "Transformer"], index=0)
+        model_choice = st.selectbox("Model", ["Transformer", "BiLSTM"], index=0)
     with col_b:
-        detection_mode = st.selectbox("Mode", ["Balanced", "Faster", "Stricter"], index=0)
+        detection_mode = st.selectbox("Mode", ["Faster", "Balanced", "Stricter"], index=0)
     with col_c:
         enable_tts = st.toggle("Speak captions", value=False)
 
