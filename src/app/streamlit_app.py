@@ -209,9 +209,9 @@ with st.expander("Detection settings", expanded=False):
         enable_tts = st.toggle("Speak captions", value=False)
 
 threshold_by_mode = {
-    "Faster": 0.45,
-    "Balanced": 0.55,
-    "Stricter": 0.70,
+    "Faster": 0.35,
+    "Balanced": 0.45,
+    "Stricter": 0.60,
 }
 confidence_threshold = threshold_by_mode[detection_mode]
 
@@ -297,9 +297,8 @@ if WEBRTC_AVAILABLE:
         async_processing=True,
     )
 
-    render_caption(**st.session_state.caption_snapshot)
-
-    while ctx.state.playing:
+    @st.fragment(run_every=0.3 if ctx.state.playing else None)
+    def _live_caption():
         processor = ctx.video_processor
         if processor:
             with processor.lock:
@@ -310,10 +309,10 @@ if WEBRTC_AVAILABLE:
                     "sentence": processor.sentence,
                     "quality": processor.quality,
                 }
-            caption_box.empty()
-            with caption_box.container():
-                render_caption(**st.session_state.caption_snapshot)
-        time.sleep(0.2)
+        render_caption(**st.session_state.caption_snapshot)
+
+    with caption_box.container():
+        _live_caption()
 else:
     st.warning("Live browser camera support is not installed. Using local camera fallback.")
     run_local = st.toggle("Start local camera", value=False)

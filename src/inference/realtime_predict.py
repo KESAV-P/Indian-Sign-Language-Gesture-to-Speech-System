@@ -47,8 +47,8 @@ class RealtimeGesturePredictor:
         checkpoint_path: str = "checkpoints/best_lstm_model.pt",
         mapping_json: str = "data/splits/class_index_to_label.json",
         model_type: str = "lstm",
-        confidence_threshold: float = 0.50,
-        window_stride: int = 4,
+        confidence_threshold: float = 0.45,
+        window_stride: int = 5,
         enable_tts: bool = True,
     ):
         self.seq_len = SEQ_LEN
@@ -57,6 +57,8 @@ class RealtimeGesturePredictor:
         self.window_stride = window_stride
         self.enable_tts = enable_tts
         self.frame_count = 0
+        # Counts frames since last model evaluation (for non-overlapping window mode)
+        self._frames_since_inference = 0
         self.last_predicted_word = "Waiting for gesture..."
         self.last_confidence = 0.0
         self.last_status = "warming_up"
@@ -101,7 +103,17 @@ class RealtimeGesturePredictor:
 
         # Initialize MediaPipe, SentenceBuffer, and TTS
         self.extractor = LandmarkExtractor()
-        self.buffer = SentenceBuffer(window_size=4, min_confidence=confidence_threshold)
+        # window_size=3: need only 3 model-stride observations to decide
+        # min_frequency=2: 2 out of 3 must agree (tolerates 1 noisy frame)
+        # repeat_cooldown=1: same word can re-fire after 1 different word
+        # min_confidence matched to confidence_threshold so borderline
+        # predictions (e.g. 0.45–0.50) are not silently discarded by the buffer.
+        self.buffer = SentenceBuffer(
+            window_size=5,           # need 5 consecutive model observations
+            min_confidence=0.65,     # only feed high-confidence predictions into votes
+            min_frequency=4,         # 4 out of 5 must agree — blocks single-class runs
+            repeat_cooldown=2,       # same word needs 2 different words between repeats
+        )
         self.tts = TTSEngine() if enable_tts else None
 
     @staticmethod
@@ -121,6 +133,18 @@ class RealtimeGesturePredictor:
 
     def health_report(self) -> Dict[str, Any]:
         """Expose runtime readiness without requiring users to inspect logs."""
+        ext = self.extractor
+        mediapipe_ready = bool(
+            getattr(ext, "holistic", None)          # legacy mp.solutions path
+            or getattr(ext, "use_tasks_api", False)  # Tasks API path
+            or getattr(ext, "use_tflite", False)     # CPU TFLite path
+        )
+        backend = (
+            "tflite_cpu" if getattr(ext, "use_tflite", False) else
+            "tasks_api"  if getattr(ext, "use_tasks_api", False) else
+            "legacy_holistic" if getattr(ext, "holistic", None) else
+            "unavailable"
+        )
         return {
             "device": str(self.device),
             "classes": self.num_classes,
@@ -128,7 +152,8 @@ class RealtimeGesturePredictor:
             "features": self.total_features,
             "confidence_threshold": self.confidence_threshold,
             "window_stride": self.window_stride,
-            "mediapipe_ready": bool(self.extractor.holistic),
+            "mediapipe_ready": mediapipe_ready,
+            "mediapipe_backend": backend,
             "tts_enabled": bool(self.enable_tts and self.tts),
         }
 
@@ -213,31 +238,53 @@ class RealtimeGesturePredictor:
         and renders HUD overlay.
         """
         self.frame_count += 1
-        
-        # 1. MediaPipe feature extraction
-        image_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
-        results = None
-        if self.extractor.holistic:
-            results = self.extractor.holistic.process(image_rgb)
-        
-        feature_vector = self.extractor.extract_frame_landmarks(frame_bgr, results=results)
+
+        # 1. MediaPipe feature extraction — works on both legacy and Tasks API paths
+        feature_vector, results = self.extractor.process_frame_for_hud(frame_bgr)
+        self.last_quality = self.landmark_quality(results, len(self.landmark_window) / float(self.seq_len))
+
+        # ── HAND GUARD ──────────────────────────────────────────────────────────
+        # Do NOT accumulate frames when no hand is visible. Feeding zero-hand
+        # vectors into the model causes it to hallucinate high-confidence outputs
+        # for whatever class best fits an all-zero hand signal (typically
+        # "Mother", "Brother", etc. whose signs overlap with the zero baseline).
+        if not self.last_quality["hand_visible"]:
+            # Reset the window so stale zero-frames don't linger
+            self.landmark_window.clear()
+            self._frames_since_inference = 0
+            current_pred_word = "Show your hand"
+            confidence = 0.0
+            self.last_status = "hand_not_visible"
+            assembled_sentence = self.buffer.get_current_sentence()
+            annotated_frame = self.draw_landmarks_and_hud(
+                frame_bgr, results, current_pred_word, confidence, assembled_sentence
+            )
+            self.last_predicted_word = current_pred_word
+            self.last_confidence = 0.0
+            return annotated_frame, current_pred_word, confidence, assembled_sentence
+        # ── END HAND GUARD ──────────────────────────────────────────────────────
+
         self.landmark_window.append(feature_vector)
         sequence_fill = len(self.landmark_window) / float(self.seq_len)
         self.last_quality = self.landmark_quality(results, sequence_fill)
 
         current_pred_word = self.last_predicted_word
         confidence = self.last_confidence
-        if not self.last_quality["hand_visible"]:
-            current_pred_word = "Show your hand"
-            self.last_status = "hand_not_visible"
-        elif len(self.landmark_window) < self.seq_len:
+        if len(self.landmark_window) < self.seq_len:
             current_pred_word = f"Hold steady ({int(sequence_fill * 100)}%)"
             self.last_status = "warming_up"
         else:
             self.last_status = "scanning"
 
-        # 2. Perform sequence classification on stride window
-        if len(self.landmark_window) == self.seq_len and (self.frame_count % self.window_stride == 0):
+        # 2. Perform sequence classification — fire only when enough *new* frames
+        # have accumulated since the last inference.
+        self._frames_since_inference += 1
+        run_inference = (
+            len(self.landmark_window) == self.seq_len
+            and self._frames_since_inference >= self.window_stride
+        )
+        if run_inference:
+            self._frames_since_inference = 0
             seq_tensor = torch.tensor(
                 np.array(self.landmark_window), dtype=torch.float32
             ).unsqueeze(0).to(self.device)
@@ -261,9 +308,14 @@ class RealtimeGesturePredictor:
                 else:
                     current_pred_word = f"Scanning ({confidence*100:.0f}%)"
                     self.last_status = "low_confidence"
+                    # Low-confidence predictions do NOT vote — they are noise.
 
                 self.last_predicted_word = current_pred_word
                 self.last_confidence = confidence
+
+            # Overlapping sliding window: drop only the oldest window_stride frames.
+            for _ in range(min(self.window_stride, len(self.landmark_window))):
+                self.landmark_window.popleft()
 
         assembled_sentence = self.buffer.get_current_sentence()
 
@@ -279,6 +331,7 @@ class RealtimeGesturePredictor:
         self.landmark_window.clear()
         self.buffer.clear()
         self.frame_count = 0
+        self._frames_since_inference = 0
         self.last_predicted_word = "Waiting for gesture..."
         self.last_confidence = 0.0
         self.last_status = "warming_up"

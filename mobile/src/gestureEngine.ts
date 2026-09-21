@@ -1,3 +1,21 @@
+/**
+ * Gesture Engine — Real MediaPipe + PyTorch Inference via Backend API
+ *
+ * Replaces the previous simulation ticker.
+ * The engine sends base64-encoded camera frames to the FastAPI backend's
+ * POST /predict_frame endpoint, which runs MediaPipe landmark extraction
+ * and LSTM inference server-side, then returns a DetectionSnapshot.
+ *
+ * Architecture:
+ *   Mobile camera → (base64 JPEG) → /predict_frame → FramePredictResponse
+ *                                                        ↓
+ *                                               DetectionSnapshot (same
+ *                                               interface as before, so
+ *                                               App.tsx needs minimal changes)
+ */
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+
 export type DetectionStatus =
   | "ready"
   | "hand_not_visible"
@@ -14,118 +32,183 @@ export type DetectionSnapshot = {
   wordHistory: string[];
 };
 
-const ISL_VOCABULARY: string[] = [
-  "Hello",
-  "Thank You",
-  "Please",
-  "Yes",
-  "No",
-  "Help",
-  "Good Morning",
-  "Food",
-  "Water",
-  "I Love You",
-  "Sorry",
-  "Come Here",
-  "Go Away",
-  "How Are You",
-  "My Name Is",
-  "I Am Fine",
-  "Good Night",
-  "See You",
-  "Congratulations",
-  "Welcome"
-];
+// ── Backend URL configuration ─────────────────────────────────────────────────
+//
+// When running in Expo Go on a PHYSICAL device, set this to your Mac's
+// LAN IP address (e.g. "http://192.168.1.100:8000").
+// The iOS Simulator and Android Emulator can use "http://localhost:8000".
+//
+// IMPORTANT: Change this to your Mac's LAN IP when testing on a real device.
+// Find it with: `ipconfig getifaddr en0`  (macOS WiFi IP)
+//
+const BACKEND_URL = "http://localhost:8000";
 
-export function createGestureEngine() {
-  let frame = 0;
-  let caption = "";
-  let lastAccepted = "";
+// Session ID for server-side window state (one per app session)
+const SESSION_ID = "mobile_default";
+
+// ── API response shape (must match backend's FramePredictResponse) ────────────
+
+type FramePredictResponse = {
+  label: string;
+  confidence: number;
+  status: string;
+  hands_visible: boolean;
+  sentence: string;
+  sequence_fill: number;
+  candidate: string;
+};
+
+// ── GestureApiClient ──────────────────────────────────────────────────────────
+
+export type GestureEngine = {
+  /** Send a base64-encoded JPEG frame to the backend and return a DetectionSnapshot. */
+  processFrame: (imageBase64: string) => Promise<DetectionSnapshot>;
+  /** Reset server-side window state and clear local word history. */
+  clear: () => Promise<DetectionSnapshot>;
+  /** Return current snapshot without sending a new frame (for polling fallback). */
+  getSnapshot: () => DetectionSnapshot;
+};
+
+const initialSnapshot: DetectionSnapshot = {
+  status: "ready",
+  caption: "Point camera at an ISL gesture",
+  candidate: "Ready",
+  confidence: 0,
+  handsVisible: false,
+  wordHistory: [],
+};
+
+export function createGestureEngine(): GestureEngine {
+  // Local state mirrored from server responses
+  let lastSnapshot: DetectionSnapshot = { ...initialSnapshot };
   let wordHistory: string[] = [];
+  let lastAcceptedWord = "";
 
-  function clear(): DetectionSnapshot {
-    frame = 0;
-    caption = "";
-    lastAccepted = "";
-    wordHistory = [];
-    return {
-      status: "ready",
-      caption: "Point camera at an ISL gesture",
-      candidate: "Ready",
-      confidence: 0,
-      handsVisible: false,
-      wordHistory: []
-    };
-  }
-
-  function smoothConfidence(raw: number): number {
-    // Smooth sine-wave based confidence curve
-    return 0.45 + 0.45 * Math.sin((raw * Math.PI) / 2);
-  }
-
-  function tick(): DetectionSnapshot {
-    frame += 1;
-
-    // Phase 1: looking for hands (first ~2s at 240ms tick = ~8 frames)
-    if (frame < 9) {
-      return {
-        status: "hand_not_visible",
-        caption: caption || "Move hands into the frame",
-        candidate: "Searching for hands…",
-        confidence: 0.05 + (frame / 9) * 0.08,
-        handsVisible: false,
-        wordHistory
-      };
+  /**
+   * Map a FramePredictResponse to a DetectionSnapshot.
+   * - `caption`     = accumulated sentence (from sentence_buffer)
+   * - `candidate`   = current candidate word from model
+   * - `wordHistory` = last 5 accepted words (for word chips in UI)
+   */
+  function mapResponse(resp: FramePredictResponse): DetectionSnapshot {
+    // Update word history when a new word is translated
+    if (
+      resp.status === "translated" &&
+      resp.label &&
+      resp.label !== lastAcceptedWord &&
+      resp.label !== "Ready"
+    ) {
+      lastAcceptedWord = resp.label;
+      wordHistory = [...wordHistory.slice(-4), resp.label];
     }
 
-    // Phase 2: warming up / collecting sequence (~2.5s more)
-    if (frame < 20) {
-      const warmProgress = (frame - 9) / 11;
-      return {
-        status: "warming_up",
-        caption: caption || "Hold gesture steady",
-        candidate: `Collecting keypoints ${Math.round(warmProgress * 100)}%`,
-        confidence: smoothConfidence(warmProgress * 0.6),
-        handsVisible: true,
-        wordHistory
-      };
-    }
+    // Map server status string to DetectionStatus type
+    const status = mapStatus(resp.status);
 
-    // Each word cycle: 32 frames = ~7.7s
-    const cycleLen = 32;
-    const cyclePos = frame % cycleLen;
-    const vocabIndex = Math.floor(frame / cycleLen) % ISL_VOCABULARY.length;
-    const word = ISL_VOCABULARY[vocabIndex];
-
-    // First 22 frames of cycle: recognizing phase
-    if (cyclePos < 22) {
-      const recProgress = cyclePos / 22;
-      return {
-        status: "recognizing",
-        caption: caption || "Recognizing gesture…",
-        candidate: word,
-        confidence: smoothConfidence(0.4 + recProgress * 0.5),
-        handsVisible: true,
-        wordHistory
-      };
-    }
-
-    // Last 10 frames of cycle: translated / accepted
-    if (word !== lastAccepted) {
-      caption = caption ? `${caption} ${word}` : word;
-      lastAccepted = word;
-      wordHistory = [...wordHistory.slice(-4), word];
-    }
+    // Caption = the full sentence assembled by the server's SentenceBuffer
+    const caption =
+      resp.sentence ||
+      captionForStatus(status, resp.candidate, resp.sequence_fill);
 
     return {
-      status: "translated",
+      status,
       caption,
-      candidate: word,
-      confidence: 0.87 + (Math.sin(frame * 0.3) * 0.05),
-      handsVisible: true,
-      wordHistory
+      candidate: resp.candidate || resp.label || "—",
+      confidence: resp.confidence,
+      handsVisible: resp.hands_visible,
+      wordHistory: [...wordHistory],
     };
   }
 
-  return { clear, tick };
+  function mapStatus(s: string): DetectionStatus {
+    switch (s) {
+      case "translated":       return "translated";
+      case "recognizing":      return "recognizing";
+      case "warming_up":       return "warming_up";
+      case "hand_not_visible": return "hand_not_visible";
+      default:                 return "ready";
+    }
+  }
+
+  function captionForStatus(
+    status: DetectionStatus,
+    candidate: string,
+    fill: number,
+  ): string {
+    switch (status) {
+      case "hand_not_visible": return "Move hands into the frame";
+      case "warming_up":       return `Collecting frames… ${Math.round(fill * 100)}%`;
+      case "recognizing":      return `Recognizing "${candidate}"…`;
+      case "translated":       return candidate;
+      default:                 return "Point camera at an ISL gesture";
+    }
+  }
+
+  // ── Public API ───────────────────────────────────────────────────────────────
+
+  async function processFrame(imageBase64: string): Promise<DetectionSnapshot> {
+    try {
+      const resp = await fetch(`${BACKEND_URL}/predict_frame`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          image_b64: imageBase64,
+          session_id: SESSION_ID,
+        }),
+        // 2-second timeout so a slow backend doesn't freeze the UI
+        signal: AbortSignal.timeout(2000),
+      });
+
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => "");
+        console.warn(`[GestureEngine] /predict_frame ${resp.status}: ${errText}`);
+        // Return last known snapshot on API error
+        return lastSnapshot;
+      }
+
+      const data: FramePredictResponse = await resp.json();
+      lastSnapshot = mapResponse(data);
+      return lastSnapshot;
+    } catch (err) {
+      // Network error or timeout — surface as "hand not visible" to avoid frozen UI
+      if (lastSnapshot.status !== "hand_not_visible") {
+        console.warn("[GestureEngine] Network error:", err);
+      }
+      // Only downgrade status if we haven't recently translated something
+      if (lastSnapshot.status === "ready" || lastSnapshot.status === "hand_not_visible") {
+        lastSnapshot = {
+          ...lastSnapshot,
+          status: "hand_not_visible",
+          handsVisible: false,
+          confidence: 0,
+          candidate: "Connecting to backend…",
+        };
+      }
+      return lastSnapshot;
+    }
+  }
+
+  async function clear(): Promise<DetectionSnapshot> {
+    // Reset server-side window state
+    try {
+      await fetch(`${BACKEND_URL}/session/reset?session_id=${SESSION_ID}`, {
+        method: "POST",
+        signal: AbortSignal.timeout(2000),
+      });
+    } catch (e) {
+      console.warn("[GestureEngine] Reset request failed:", e);
+    }
+
+    // Reset local state
+    wordHistory = [];
+    lastAcceptedWord = "";
+    lastSnapshot = { ...initialSnapshot };
+    return lastSnapshot;
+  }
+
+  function getSnapshot(): DetectionSnapshot {
+    return lastSnapshot;
+  }
+
+  return { processFrame, clear, getSnapshot };
 }

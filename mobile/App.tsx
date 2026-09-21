@@ -3,7 +3,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as Haptics from "expo-haptics";
 import * as Speech from "expo-speech";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -23,10 +23,14 @@ type Facing = "front" | "back";
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get("window");
 
-const ACCENT = "#00D4FF";
-const SUCCESS = "#00FF87";
-const DARK_BG = "#060A12";
+const ACCENT   = "#00D4FF";
+const SUCCESS  = "#00FF87";
+const DARK_BG  = "#060A12";
 const PANEL_BG = "rgba(8, 14, 26, 0.96)";
+
+// How often to capture a frame and send to the backend (ms).
+// 200ms = 5fps — enough for a 45-frame window at stride 5 (≈1 inference/second).
+const FRAME_INTERVAL_MS = 200;
 
 const initialSnapshot: DetectionSnapshot = {
   status: "ready",
@@ -71,7 +75,6 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
       Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true })
     ]).start();
 
-    // Pulsing dot
     Animated.loop(
       Animated.sequence([
         Animated.timing(dotAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -91,13 +94,11 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
     <Animated.View style={[styles.splashRoot, { opacity: fadeAnim }]}>
       <StatusBar style="light" />
 
-      {/* Radial glow behind logo */}
       <View style={styles.splashGlow} />
 
       <Animated.View
         style={[styles.splashContent, { transform: [{ translateY: slideAnim }] }]}
       >
-        {/* Hand emoji with neon ring */}
         <View style={styles.splashIconWrap}>
           <View style={styles.splashIconRing}>
             <Text style={styles.splashEmoji}>🤟</Text>
@@ -108,7 +109,7 @@ function SplashScreen({ onDone }: { onDone: () => void }) {
         <Text style={styles.splashSub}>Indian Sign Language · AI Translation</Text>
 
         <View style={styles.splashTagRow}>
-          {["Real-time", "On-device", "Demo Mode"].map((tag) => (
+          {["Real-time", "MediaPipe", "PyTorch LSTM"].map((tag) => (
             <View key={tag} style={styles.splashTag}>
               <Text style={styles.splashTagText}>{tag}</Text>
             </View>
@@ -166,19 +167,46 @@ function LensScreen() {
   const [muted, setMuted]               = useState(false);
   const [showSplash, setShowSplash]     = useState(true);
   const [snapshot, setSnapshot]         = useState<DetectionSnapshot>(initialSnapshot);
-  const engine    = useMemo(() => createGestureEngine(), []);
-  const lastSpoken = useRef("");
+
+  const engine      = useMemo(() => createGestureEngine(), []);
+  const cameraRef   = useRef<CameraView>(null);
+  const lastSpoken  = useRef("");
+  const isCapturing = useRef(false); // prevent overlapping captures
 
   // Caption fade-in animation
   const captionFade = useRef(new Animated.Value(1)).current;
   const prevCaption = useRef("");
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const next = engine.tick();
+  // ── Frame capture loop ───────────────────────────────────────────────────────
+  const captureAndProcess = useCallback(async () => {
+    if (isCapturing.current || !cameraRef.current) return;
+    isCapturing.current = true;
+
+    try {
+      // Capture a low-quality JPEG (0.3 quality = ~50-80KB) for fast network transfer
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.3,
+        base64: true,
+        skipProcessing: true,
+        exif: false,
+      });
+
+      if (!photo?.base64) {
+        isCapturing.current = false;
+        return;
+      }
+
+      // Send to backend; get real DetectionSnapshot
+      const next = await engine.processFrame(photo.base64);
       setSnapshot(next);
 
-      if (!muted && next.status === "translated" && next.caption && next.caption !== lastSpoken.current) {
+      // TTS on successful translation
+      if (
+        !muted &&
+        next.status === "translated" &&
+        next.caption &&
+        next.caption !== lastSpoken.current
+      ) {
         lastSpoken.current = next.caption;
         Speech.speak(next.caption, { rate: 0.92, pitch: 1.0 });
         Haptics.selectionAsync();
@@ -192,9 +220,18 @@ function LensScreen() {
           Animated.timing(captionFade, { toValue: 1, duration: 250, useNativeDriver: true })
         ]).start();
       }
-    }, 220);
-    return () => clearInterval(timer);
+    } catch (err) {
+      // Silently ignore capture errors (can happen during camera flip, etc.)
+    } finally {
+      isCapturing.current = false;
+    }
   }, [engine, muted]);
+
+  // ── Interval timer ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    const timer = setInterval(captureAndProcess, FRAME_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [captureAndProcess]);
 
   if (showSplash) {
     return <SplashScreen onDone={() => setShowSplash(false)} />;
@@ -212,14 +249,18 @@ function LensScreen() {
     return <PermissionScreen onRequest={requestPermission} />;
   }
 
-  const sColor = statusColor(snapshot.status);
+  const sColor        = statusColor(snapshot.status);
   const isTranslating = snapshot.status === "translated" || snapshot.status === "recognizing";
   const confidencePct = Math.round(snapshot.confidence * 100);
 
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
-      <CameraView style={StyleSheet.absoluteFill} facing={facing} />
+      <CameraView
+        ref={cameraRef}
+        style={StyleSheet.absoluteFill}
+        facing={facing}
+      />
 
       {/* Dark vignette gradient overlay */}
       <View style={styles.vignette} pointerEvents="none" />
@@ -270,7 +311,12 @@ function LensScreen() {
             handsVisible={snapshot.handsVisible}
             translating={isTranslating}
           />
-          <Text style={[styles.guideLabel, { color: snapshot.handsVisible ? SUCCESS : "rgba(255,255,255,0.7)" }]}>
+          <Text
+            style={[
+              styles.guideLabel,
+              { color: snapshot.handsVisible ? SUCCESS : "rgba(255,255,255,0.7)" }
+            ]}
+          >
             {snapshot.handsVisible ? "✓  Hands detected" : "Keep hands inside frame"}
           </Text>
         </View>
@@ -317,9 +363,9 @@ function LensScreen() {
               <ActionBtn
                 icon="refresh"
                 label="Reset"
-                onPress={() => {
-                  engine.clear();
-                  setSnapshot(initialSnapshot);
+                onPress={async () => {
+                  const cleared = await engine.clear();
+                  setSnapshot(cleared);
                   lastSpoken.current = "";
                 }}
               />
@@ -336,12 +382,6 @@ function LensScreen() {
                 label="Share"
                 onPress={() => {}}
               />
-            </View>
-
-            {/* Demo badge */}
-            <View style={styles.demoBadge}>
-              <Ionicons name="flask-outline" size={11} color="rgba(255,255,255,0.35)" />
-              <Text style={styles.demoText}>  Demo Mode — MediaPipe inference pending</Text>
             </View>
           </View>
         </View>
@@ -565,7 +605,6 @@ const styles = StyleSheet.create({
   vignette: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "transparent",
-    // Top vignette
     borderTopWidth: 120,
     borderTopColor: "rgba(6,10,18,0.75)",
     borderRightWidth: 0,
@@ -579,7 +618,6 @@ const styles = StyleSheet.create({
     left: 0,
     position: "absolute",
     right: 0,
-    // Bottom gradient fade
     backgroundColor: "rgba(6,10,18,0.6)"
   },
 
@@ -761,17 +799,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800"
   },
-
-  // Demo badge
-  demoBadge: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: -4
-  },
-  demoText: {
-    color: "rgba(255,255,255,0.3)",
-    fontSize: 11,
-    fontWeight: "600"
-  }
 });

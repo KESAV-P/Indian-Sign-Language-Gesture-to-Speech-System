@@ -13,6 +13,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from src.preprocessing.config import SEQ_LEN, TOTAL_FEATURES
+from src.preprocessing.extract_landmarks import LandmarkExtractor
 from src.models.lstm_classifier import SignLSTMClassifier
 from src.models.transformer_classifier import SignTransformerClassifier
 from src.models.model_utils import build_model, count_parameters
@@ -82,6 +83,33 @@ class TestISLSpeakPipeline(unittest.TestCase):
         """Test non-blocking TTSEngine instantiation."""
         tts = TTSEngine()
         self.assertIsNotNone(tts)
+
+    def test_landmark_extractor_legacy_solutions(self):
+        """Verify LandmarkExtractor correctly initializes Holistic and returns non-zero landmarks."""
+        import cv2, glob
+        extractor = LandmarkExtractor()
+        self.assertTrue(
+            extractor.use_legacy_solutions,
+            "LandmarkExtractor failed to initialize mp.solutions.holistic (use_legacy_solutions must be True)",
+        )
+        sample_videos = glob.glob("data/raw/*/*/*.MOV") + glob.glob("data/raw/*/*/*.mp4")
+        if sample_videos:
+            cap = cv2.VideoCapture(sample_videos[0])
+            ret, frame = cap.read()
+            cap.release()
+            self.assertTrue(ret, "Failed to read frame from sample video")
+        else:
+            frame = np.full((480, 640, 3), 128, dtype=np.uint8)
+
+        feature_vector = extractor.extract_frame_landmarks(frame)
+        self.assertEqual(feature_vector.shape, (TOTAL_FEATURES,))
+        if sample_videos:
+            self.assertGreater(
+                np.count_nonzero(feature_vector),
+                0,
+                "Extracted landmark vector from real frame is all-zero! MediaPipe Holistic extraction failed.",
+            )
+        extractor.close()
 
 
 if __name__ == "__main__":

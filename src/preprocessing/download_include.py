@@ -1,16 +1,38 @@
 """
-INCLUDE ISL Dataset Downloader & Landmark Extractor.
-Downloads INCLUDE / INCLUDE-50 Indian Sign Language dataset from Hugging Face / research sources,
-extracts MediaPipe Holistic 258 landmarks, cleans label names, and saves processed landmark sequences.
+INCLUDE ISL Dataset Downloader & Real Landmark Extractor.
+
+Downloads the real AI4Bharat INCLUDE / INCLUDE-50 Indian Sign Language dataset
+(263 word classes, ~4,287 real human signer videos, CC-BY 4.0) from HuggingFace
+metadata + Zenodo video files, then extracts genuine MediaPipe Holistic 258-feature
+landmark sequences from each video.
+
+ALL SYNTHETIC DATA HAS BEEN REMOVED.
+This pipeline only produces real landmark features extracted from real human signers.
+
+Download strategy (tried in order):
+  1. HuggingFace `datasets` library — streams INCLUDE video metadata and downloads
+     raw video bytes from Zenodo per-sample.
+  2. Official AI4Bharat bash download script — bulk-downloads all videos from Zenodo
+     into data/raw/include/ and processes them locally.
+
+Usage:
+    python src/preprocessing/download_include.py               # Full 263-class INCLUDE
+    python src/preprocessing/download_include.py --subset 50   # INCLUDE-50 subset only
+    python src/preprocessing/download_include.py --max_samples 500  # Quick test run
 """
 
 import os
 import sys
 import re
 import json
+import subprocess
+import tempfile
+import shutil
+import requests
 import numpy as np
 import pandas as pd
-from typing import List, Dict
+from pathlib import Path
+from typing import List, Dict, Optional
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if PROJECT_ROOT not in sys.path:
@@ -19,170 +41,560 @@ if PROJECT_ROOT not in sys.path:
 from src.preprocessing.config import SEQ_LEN, TOTAL_FEATURES
 from src.preprocessing.extract_landmarks import LandmarkExtractor
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
 
-def clean_label_name(label: str) -> str:
-    """
-    Cleans label names by removing leading numeric indices (e.g. '48. Hello' -> 'Hello').
-    """
-    cleaned = re.sub(r"^\d+[\.\_\-\s]+", "", label).strip()
+INCLUDE_HF_DATASET = "ai4bharat/INCLUDE"
+INCLUDE_GITHUB_REPO = "https://github.com/AI4Bharat/INCLUDE"
+ZENODO_DOWNLOAD_SCRIPT = "https://raw.githubusercontent.com/AI4Bharat/INCLUDE/master/data/download.sh"
+
+RAW_VIDEO_DIR = os.path.join(PROJECT_ROOT, "data", "raw", "include")
+LANDMARKS_DIR = os.path.join(PROJECT_ROOT, "data", "landmarks")
+LABELS_CSV    = os.path.join(PROJECT_ROOT, "data", "splits", "labels.csv")
+
+
+def clean_label(label: str) -> str:
+    """Clean label: strip leading numeric indices, title-case."""
+    cleaned = re.sub(r"^\d+[\.\-\_\s]+", "", label).strip()
     return cleaned.title() if cleaned else label.strip()
 
 
-def process_local_greetings(
-    raw_dir: str = "data/raw/Greetings",
-    output_landmarks_dir: str = "data/landmarks",
+# ---------------------------------------------------------------------------
+# Path A: HuggingFace datasets library (recommended — no raw video storage)
+# ---------------------------------------------------------------------------
+
+def download_via_huggingface(
+    output_landmarks_dir: str = LANDMARKS_DIR,
+    include_50_only: bool = False,
+    max_samples: Optional[int] = None,
 ) -> List[Dict]:
     """
-    Processes the local Greetings dataset videos with clean labels.
+    Download INCLUDE dataset via HuggingFace `datasets` library.
+
+    The HuggingFace INCLUDE dataset contains metadata (label, video_path, include_50 flag)
+    for all ~4,287 videos. We use this metadata to construct Zenodo download URLs and
+    fetch each video, then run LandmarkExtractor on it.
+
+    Args:
+        output_landmarks_dir: Where to save .npy landmark files.
+        include_50_only: If True, only process the INCLUDE-50 subset (50 classes, ~820 videos).
+        max_samples: If set, only process this many samples (useful for quick testing).
+
+    Returns:
+        List of record dicts with video_id, label, npy_path, frames, features.
+    """
+    try:
+        from datasets import load_dataset
+    except ImportError:
+        raise RuntimeError(
+            "HuggingFace `datasets` library not installed.\n"
+            "Run: pip install datasets\n"
+            "Then retry."
+        )
+
+    print(f"\n{'='*60}")
+    print(f"  Downloading AI4Bharat INCLUDE ISL Dataset")
+    print(f"  Source: HuggingFace ({INCLUDE_HF_DATASET})")
+    print(f"  Mode: {'INCLUDE-50 (50 classes)' if include_50_only else 'Full INCLUDE (263 classes)'}")
+    print(f"{'='*60}\n")
+
+    print("Loading INCLUDE metadata from HuggingFace...")
+    try:
+        dataset = load_dataset(INCLUDE_HF_DATASET, trust_remote_code=True)
+    except Exception as e:
+        print(f"[ERROR] Could not load HuggingFace dataset: {e}")
+        print("Falling back to Zenodo bulk download method...")
+        return download_via_zenodo_script(
+            output_landmarks_dir=output_landmarks_dir,
+            include_50_only=include_50_only,
+            max_samples=max_samples,
+        )
+
+    os.makedirs(output_landmarks_dir, exist_ok=True)
+    extractor = LandmarkExtractor()
+    records = []
+    processed = 0
+    failed = 0
+
+    for split_name in ["train", "val", "test"]:
+        if split_name not in dataset:
+            continue
+        split_data = dataset[split_name]
+
+        for sample in split_data:
+            if max_samples is not None and processed >= max_samples:
+                break
+
+            # Filter to INCLUDE-50 subset if requested
+            if include_50_only and not sample.get("include_50", False):
+                continue
+
+            label = clean_label(sample.get("label", ""))
+            video_path_meta = sample.get("video_path", "")
+            if not label or not video_path_meta:
+                continue
+
+            video_id = Path(video_path_meta).stem
+            safe_label = label.replace(" ", "_")
+            npy_filename = f"include_{safe_label}_{video_id}.npy"
+            npy_save_path = os.path.join(output_landmarks_dir, npy_filename)
+
+            # Skip if already extracted
+            if os.path.exists(npy_save_path):
+                records.append({
+                    "video_id": video_id,
+                    "label": label,
+                    "npy_path": npy_save_path,
+                    "frames": SEQ_LEN,
+                    "features": TOTAL_FEATURES,
+                    "source": "include_hf",
+                    "split": split_name,
+                })
+                processed += 1
+                continue
+
+            # Try to get video bytes from the sample (HF may embed them)
+            video_bytes = sample.get("video", None)
+            if video_bytes is None:
+                # No inline video — try downloading from Zenodo by constructing the URL
+                video_bytes = _fetch_zenodo_video(video_path_meta)
+
+            if video_bytes is None:
+                print(f"  [SKIP] Could not fetch video for {video_id} ({label})")
+                failed += 1
+                continue
+
+            # Write to temp file, process, delete
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+                    if isinstance(video_bytes, bytes):
+                        tmp.write(video_bytes)
+                    elif hasattr(video_bytes, "read"):
+                        tmp.write(video_bytes.read())
+                    else:
+                        tmp.write(bytes(video_bytes))
+                    tmp_path = tmp.name
+
+                landmarks = extractor.process_video(tmp_path, target_seq_len=SEQ_LEN)
+                os.unlink(tmp_path)
+
+                np.save(npy_save_path, landmarks)
+                records.append({
+                    "video_id": video_id,
+                    "label": label,
+                    "npy_path": npy_save_path,
+                    "frames": SEQ_LEN,
+                    "features": TOTAL_FEATURES,
+                    "source": "include_hf",
+                    "split": split_name,
+                })
+                processed += 1
+
+                if processed % 50 == 0:
+                    print(f"  Progress: {processed} videos processed, {failed} failed...")
+
+            except Exception as e:
+                print(f"  [ERROR] Processing {video_id}: {e}")
+                failed += 1
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+
+        if max_samples is not None and processed >= max_samples:
+            break
+
+    extractor.close()
+    print(f"\n✓ Processed {processed} real ISL videos | {failed} failed")
+    return records
+
+
+def _fetch_zenodo_video(video_path_meta: str) -> Optional[bytes]:
+    """
+    Attempt to download a video from the AI4Bharat Zenodo archive.
+    The INCLUDE GitHub repo documents the Zenodo record base URL.
+    """
+    # The Zenodo record for INCLUDE is at: https://zenodo.org/record/4010759
+    # Videos are stored as: <category>/<word>/<filename>.mp4
+    ZENODO_BASE = "https://zenodo.org/record/4010759/files"
+    filename = Path(video_path_meta).name
+    url = f"{ZENODO_BASE}/{filename}"
+
+    try:
+        resp = requests.get(url, timeout=30, stream=True)
+        if resp.status_code == 200:
+            return resp.content
+    except Exception:
+        pass
+
+    # Try alternate path structure
+    try:
+        parts = Path(video_path_meta).parts
+        if len(parts) >= 2:
+            url2 = f"{ZENODO_BASE}/{parts[-2]}/{parts[-1]}"
+            resp2 = requests.get(url2, timeout=30, stream=True)
+            if resp2.status_code == 200:
+                return resp2.content
+    except Exception:
+        pass
+
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Path B: Zenodo bulk download via official bash script
+# ---------------------------------------------------------------------------
+
+def download_via_zenodo_script(
+    output_landmarks_dir: str = LANDMARKS_DIR,
+    include_50_only: bool = False,
+    max_samples: Optional[int] = None,
+) -> List[Dict]:
+    """
+    Download the full INCLUDE dataset from Zenodo using the official AI4Bharat
+    download script, then extract landmarks from all downloaded videos.
+
+    This downloads the raw videos (~15-20 GB for full dataset, ~3 GB for INCLUDE-50)
+    to data/raw/include/, then runs LandmarkExtractor on each .mp4 file.
+    """
+    print(f"\n{'='*60}")
+    print(f"  Path B: Zenodo Bulk Download (AI4Bharat INCLUDE)")
+    print(f"  This will download raw ISL video files to: {RAW_VIDEO_DIR}")
+    print(f"  Estimated size: ~3 GB (INCLUDE-50) | ~15 GB (full)")
+    print(f"{'='*60}\n")
+
+    os.makedirs(RAW_VIDEO_DIR, exist_ok=True)
+
+    # Download the official AI4Bharat download script
+    print("Fetching official AI4Bharat download script from GitHub...")
+    script_path = os.path.join(RAW_VIDEO_DIR, "download.sh")
+
+    try:
+        resp = requests.get(ZENODO_DOWNLOAD_SCRIPT, timeout=30)
+        resp.raise_for_status()
+        with open(script_path, "w") as f:
+            f.write(resp.text)
+        os.chmod(script_path, 0o755)
+        print(f"✓ Download script saved to: {script_path}")
+    except Exception as e:
+        print(f"[ERROR] Could not fetch download script: {e}")
+        print(f"Please manually download the script from:")
+        print(f"  {INCLUDE_GITHUB_REPO}/blob/master/data/download.sh")
+        print(f"and run it in: {RAW_VIDEO_DIR}")
+        return []
+
+    # Run the download script
+    print(f"\nRunning download script (this may take a long time)...")
+    print(f"  Downloading to: {RAW_VIDEO_DIR}")
+
+    try:
+        result = subprocess.run(
+            ["bash", script_path],
+            cwd=RAW_VIDEO_DIR,
+            timeout=7200,  # 2 hour timeout
+            capture_output=False,
+        )
+        if result.returncode != 0:
+            print(f"[WARN] Download script exited with code {result.returncode}")
+    except subprocess.TimeoutExpired:
+        print("[WARN] Download timed out after 2 hours. Processing what was downloaded...")
+    except Exception as e:
+        print(f"[ERROR] Could not run download script: {e}")
+        return []
+
+    # Now extract landmarks from all downloaded videos
+    print(f"\nExtracting landmarks from downloaded videos in {RAW_VIDEO_DIR}...")
+    records = _extract_landmarks_from_directory(
+        raw_dir=RAW_VIDEO_DIR,
+        output_dir=output_landmarks_dir,
+        include_50_only=include_50_only,
+        max_samples=max_samples,
+    )
+    return records
+
+
+# ---------------------------------------------------------------------------
+# Local video directory processing
+# ---------------------------------------------------------------------------
+
+def process_local_video_directory(
+    raw_dir: str,
+    output_landmarks_dir: str = LANDMARKS_DIR,
+    max_samples: Optional[int] = None,
+) -> List[Dict]:
+    """
+    Process any local directory of videos organized as:
+        raw_dir/<class_name>/<video_file>.mp4
+
+    Extracts real MediaPipe landmarks from each video.
+    This handles the Greetings dataset, INCLUDE downloaded locally, or any custom ISL videos.
     """
     if not os.path.exists(raw_dir):
-        print(f"Directory {raw_dir} does not exist.")
+        print(f"[INFO] Directory {raw_dir} does not exist. Skipping local processing.")
         return []
+
+    return _extract_landmarks_from_directory(
+        raw_dir=raw_dir,
+        output_dir=output_landmarks_dir,
+        max_samples=max_samples,
+    )
+
+
+def _extract_landmarks_from_directory(
+    raw_dir: str,
+    output_dir: str,
+    include_50_only: bool = False,
+    max_samples: Optional[int] = None,
+) -> List[Dict]:
+    """
+    Walk a directory of videos (class_name/video.mp4 structure),
+    run LandmarkExtractor on each, and save .npy files.
+
+    Returns list of record dicts.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Collect all video files
+    video_files = []
+    for root, _, files in os.walk(raw_dir):
+        for fname in files:
+            if fname.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
+                raw_label = os.path.basename(root)
+                clean = clean_label(raw_label)
+                video_files.append((os.path.join(root, fname), clean, fname))
+
+    if not video_files:
+        print(f"[WARN] No video files found in {raw_dir}")
+        return []
+
+    if max_samples:
+        video_files = video_files[:max_samples]
+
+    print(f"Found {len(video_files)} real human ISL video files in {raw_dir}")
+    print(f"Extracting MediaPipe landmarks (258 features/frame, {SEQ_LEN} frames/video)...")
 
     extractor = LandmarkExtractor()
     records = []
-    video_files = []
+    failed = 0
 
-    for root, _, files in os.walk(raw_dir):
-        for file in files:
-            if file.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
-                raw_label = os.path.basename(root)
-                clean_label = clean_label_name(raw_label)
-                video_files.append((os.path.join(root, file), clean_label, file))
+    for idx, (video_path, label, fname) in enumerate(video_files):
+        video_id = os.path.splitext(fname)[0]
+        safe_label = label.replace(" ", "_")
+        npy_filename = f"{safe_label}_{video_id}_{idx:05d}.npy"
+        npy_save_path = os.path.join(output_dir, npy_filename)
 
-    print(f"Found {len(video_files)} local video files in {raw_dir}")
-
-    for idx, (video_path, label, filename) in enumerate(video_files):
-        video_id = os.path.splitext(filename)[0]
-        try:
-            landmarks = extractor.process_video(video_path, target_seq_len=SEQ_LEN)
-            safe_label = label.replace(" ", "_")
-            npy_filename = f"greetings_{safe_label}_{idx:03d}.npy"
-            npy_save_path = os.path.join(output_landmarks_dir, npy_filename)
-            np.save(npy_save_path, landmarks)
-
+        if os.path.exists(npy_save_path):
             records.append({
-                "video_id": f"greetings_{idx:03d}",
+                "video_id": video_id,
                 "label": label,
                 "npy_path": npy_save_path,
                 "frames": SEQ_LEN,
                 "features": TOTAL_FEATURES,
-                "source": "local_greetings"
+                "source": "local_video",
             })
-        except Exception as e:
-            print(f"Error processing {video_path}: {e}")
+            continue
 
-    extractor.close()
-    return records
-
-
-def download_and_process_include(
-    output_landmarks_dir: str = "data/landmarks",
-    max_classes: int = 50,
-    samples_per_class: int = 15,
-) -> List[Dict]:
-    """
-    Downloads and extracts landmarks for INCLUDE dataset signs from Hugging Face / GitHub sources,
-    or generates realistic ISL variations for expanded 50-class vocabulary.
-    """
-    records = []
-    
-    # 50 High-Frequency Indian Sign Language Words across categories
-    INCLUDE_50_VOCAB = [
-        # Greetings & Basics
-        "Hello", "Good Morning", "Good Afternoon", "Good Evening", "Thank You",
-        "Welcome", "Please", "Sorry", "Yes", "No", "Help", "Goodbye", "Namaste",
-        # Family & People
-        "Father", "Mother", "Brother", "Sister", "Friend", "Doctor", "Teacher",
-        # Daily Needs & Actions
-        "Water", "Food", "Eat", "Drink", "Sleep", "Home", "School", "Work",
-        "Time", "Money", "Today", "Tomorrow", "Yesterday", "Where", "What",
-        "Why", "How", "Name", "Understand", "Happy", "Sad", "Love",
-        # Numbers & Days
-        "One", "Two", "Three", "Four", "Five", "Monday", "Friday", "Sunday"
-    ]
-
-    print(f"Preparing expanded dataset with {len(INCLUDE_50_VOCAB)} ISL gesture classes...")
-    
-    try:
-        from datasets import load_dataset
-        print("Attempting Hugging Face dataset download for ai4bharat/INCLUDE...")
-        # Note: If HF dataset streaming is available, process real clips
-        # Fallback generator for rich spatial-temporal landmark trajectories if raw video download has rate limits
-    except Exception as e:
-        print(f"HuggingFace dataset note: {e}")
-
-    # Generate or extract high quality multi-class landmark datasets
-    np.random.seed(42)
-    os.makedirs(output_landmarks_dir, exist_ok=True)
-
-    for class_idx, class_name in enumerate(INCLUDE_50_VOCAB[:max_classes]):
-        safe_name = class_name.replace(" ", "_")
-        
-        # Base motion pattern for each ISL gesture class
-        base_freq = 0.4 + (class_idx * 0.15)
-        phase_shift = (class_idx * 0.25) % (2 * np.pi)
-        hand_bias = (class_idx % 3) * 0.2
-
-        for sample_idx in range(samples_per_class):
-            t = np.linspace(0, 3 * np.pi, SEQ_LEN)
-            seq = np.zeros((SEQ_LEN, TOTAL_FEATURES), dtype=np.float32)
-
-            for feat_idx in range(TOTAL_FEATURES):
-                # Simulate realistic hand and body motion curves
-                freq = base_freq + ((feat_idx % 7) * 0.08)
-                amp = 0.5 + (0.5 if feat_idx >= 132 else 0.2)  # Higher amplitude on hand landmarks
-                noise = np.random.normal(0, 0.03, size=SEQ_LEN)
-                
-                # Dynamic motion profile (start still -> move -> finish still)
-                envelope = np.sin(np.pi * np.linspace(0, 1, SEQ_LEN))
-                seq[:, feat_idx] = amp * envelope * np.sin(freq * t + phase_shift + hand_bias) + noise
-
-            video_id = f"include_{safe_name}_{sample_idx:03d}"
-            npy_path = os.path.join(output_landmarks_dir, f"{video_id}.npy")
-            np.save(npy_path, seq)
-
+        try:
+            landmarks = extractor.process_video(video_path, target_seq_len=SEQ_LEN)
+            np.save(npy_save_path, landmarks)
             records.append({
                 "video_id": video_id,
-                "label": class_name,
-                "npy_path": npy_path,
+                "label": label,
+                "npy_path": npy_save_path,
                 "frames": SEQ_LEN,
                 "features": TOTAL_FEATURES,
-                "source": "include_50"
+                "source": "local_video",
             })
 
-    print(f"Generated {len(records)} expanded landmark sequences for {max_classes} ISL gesture classes.")
+            if (idx + 1) % 50 == 0:
+                print(f"  [{idx+1}/{len(video_files)}] Processed {label}/{fname}")
+
+        except Exception as e:
+            print(f"  [ERROR] {video_path}: {e}")
+            failed += 1
+
+    extractor.close()
+    print(f"\n✓ Landmark extraction complete: {len(records)} successful, {failed} failed")
     return records
 
 
-def build_unified_dataset():
+# ---------------------------------------------------------------------------
+# Master build function
+# ---------------------------------------------------------------------------
+
+def build_real_dataset(
+    output_landmarks_dir: str = LANDMARKS_DIR,
+    labels_csv: str = LABELS_CSV,
+    include_50_only: bool = True,
+    max_samples: Optional[int] = None,
+    force_redownload: bool = False,
+) -> pd.DataFrame:
     """
-    Builds unified dataset combining cleaned local Greetings data + INCLUDE-50 dataset.
+    Builds a fully REAL ISL landmark dataset.
+
+    Pipeline:
+    1. Check for any pre-existing local videos in data/raw/include/
+    2. If found, extract landmarks from those
+    3. Also check data/raw/Greetings/ for local greetings data
+    4. If not enough data, download from HuggingFace / Zenodo
+    5. Combine all sources into labels.csv
+
+    Args:
+        output_landmarks_dir: Where to save .npy files.
+        labels_csv: Path to output CSV with all sample metadata.
+        include_50_only: If True, use only the 50-class subset (faster).
+        max_samples: Cap total samples (for testing).
+        force_redownload: Re-download even if landmarks already exist.
+
+    Returns:
+        DataFrame with all extracted samples.
     """
-    output_landmarks_dir = "data/landmarks"
-    labels_csv = "data/splits/labels.csv"
-    
-    # 1. Process local greetings with clean label names
-    greetings_records = process_local_greetings(
-        raw_dir="data/raw/Greetings",
-        output_landmarks_dir=output_landmarks_dir
-    )
-    
-    # 2. Download / Generate INCLUDE-50 dataset
-    include_records = download_and_process_include(
-        output_landmarks_dir=output_landmarks_dir,
-        max_classes=50,
-        samples_per_class=200
-    )
-    
-    all_records = greetings_records + include_records
+    os.makedirs(output_landmarks_dir, exist_ok=True)
+    os.makedirs(os.path.dirname(labels_csv), exist_ok=True)
+
+    all_records: List[Dict] = []
+
+    # ------------------------------------------------------------------
+    # Check for existing .npy files — skip re-extraction if possible
+    # ------------------------------------------------------------------
+    existing_npy = list(Path(output_landmarks_dir).glob("*.npy"))
+    if existing_npy and not force_redownload:
+        print(f"\n✓ Found {len(existing_npy)} existing landmark .npy files in {output_landmarks_dir}")
+        print("  (Use --force_redownload to re-extract from scratch)")
+
+        # Try to load existing labels CSV
+        if os.path.exists(labels_csv):
+            df = pd.read_csv(labels_csv)
+            print(f"  Loaded {len(df)} records from existing {labels_csv}")
+            print(f"  Classes: {sorted(df['label'].unique())}")
+            return df
+        else:
+            # Rebuild CSV from existing .npy files
+            # Filename format: <label>_<video_id>_<idx>.npy
+            print("  Rebuilding labels.csv from existing .npy files...")
+            for npy_path in existing_npy:
+                parts = npy_path.stem.split("_")
+                # Best-effort label extraction from filename
+                label = parts[0].replace("-", " ").title() if parts else "Unknown"
+                all_records.append({
+                    "video_id": npy_path.stem,
+                    "label": label,
+                    "npy_path": str(npy_path),
+                    "frames": SEQ_LEN,
+                    "features": TOTAL_FEATURES,
+                    "source": "existing_npy",
+                })
+
+    # ------------------------------------------------------------------
+    # Step 1: Process any local Greetings videos
+    # ------------------------------------------------------------------
+    greetings_dir = os.path.join(PROJECT_ROOT, "data", "raw", "Greetings")
+    if os.path.exists(greetings_dir) and not force_redownload:
+        print(f"\n→ Processing local Greetings videos from {greetings_dir}...")
+        greetings_records = process_local_video_directory(
+            raw_dir=greetings_dir,
+            output_landmarks_dir=output_landmarks_dir,
+            max_samples=max_samples,
+        )
+        all_records.extend(greetings_records)
+        print(f"  Added {len(greetings_records)} real Greetings samples")
+
+    # ------------------------------------------------------------------
+    # Step 2: Process any pre-downloaded INCLUDE videos
+    # ------------------------------------------------------------------
+    if os.path.exists(RAW_VIDEO_DIR) and any(Path(RAW_VIDEO_DIR).rglob("*.mp4")):
+        n_local = len(list(Path(RAW_VIDEO_DIR).rglob("*.mp4")))
+        print(f"\n→ Found {n_local} pre-downloaded INCLUDE video files in {RAW_VIDEO_DIR}")
+        local_records = _extract_landmarks_from_directory(
+            raw_dir=RAW_VIDEO_DIR,
+            output_dir=output_landmarks_dir,
+            include_50_only=include_50_only,
+            max_samples=max_samples,
+        )
+        all_records.extend(local_records)
+        print(f"  Added {len(local_records)} INCLUDE landmark samples")
+
+    # ------------------------------------------------------------------
+    # Step 3: If we still have no data, download from HuggingFace
+    # ------------------------------------------------------------------
+    if not all_records:
+        print(f"\n→ No local data found. Downloading from HuggingFace ({INCLUDE_HF_DATASET})...")
+        hf_records = download_via_huggingface(
+            output_landmarks_dir=output_landmarks_dir,
+            include_50_only=include_50_only,
+            max_samples=max_samples,
+        )
+        all_records.extend(hf_records)
+
+    if not all_records:
+        raise RuntimeError(
+            "\n[FATAL] No real ISL data could be downloaded or found.\n"
+            "Please try one of the following:\n"
+            "  1. Place real ISL videos in data/raw/include/<class_name>/<video.mp4>\n"
+            "  2. Run with internet access to download from HuggingFace\n"
+            "  3. Download the INCLUDE dataset from:\n"
+            "       https://github.com/AI4Bharat/INCLUDE\n"
+            "       https://zenodo.org/record/4010759\n"
+        )
+
+    # ------------------------------------------------------------------
+    # Save unified labels CSV
+    # ------------------------------------------------------------------
     df = pd.DataFrame(all_records)
+    df = df.drop_duplicates(subset=["npy_path"])
     df.to_csv(labels_csv, index=False)
-    
-    print(f"Saved total of {len(df)} records across {df['label'].nunique()} unique ISL classes to {labels_csv}")
-    print(f"Classes: {sorted(df['label'].unique())}")
+
+    unique_classes = sorted(df["label"].unique())
+    print(f"\n{'='*60}")
+    print(f"  REAL Dataset Summary")
+    print(f"{'='*60}")
+    print(f"  Total samples : {len(df)}")
+    print(f"  Unique classes: {len(unique_classes)}")
+    print(f"  Classes       : {unique_classes}")
+    print(f"  Saved CSV to  : {labels_csv}")
+    print(f"{'='*60}\n")
+
     return df
 
 
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
 if __name__ == "__main__":
-    build_unified_dataset()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Download and extract real AI4Bharat INCLUDE ISL dataset."
+    )
+    parser.add_argument(
+        "--subset", type=int, choices=[50, 263], default=50,
+        help="Use INCLUDE-50 (50 classes) or full INCLUDE (263 classes). Default: 50"
+    )
+    parser.add_argument(
+        "--max_samples", type=int, default=None,
+        help="Limit total samples processed (for testing). Default: no limit"
+    )
+    parser.add_argument(
+        "--force_redownload", action="store_true",
+        help="Re-download and re-extract even if .npy files already exist"
+    )
+    parser.add_argument(
+        "--landmarks_dir", type=str, default=LANDMARKS_DIR,
+        help=f"Output directory for landmark .npy files. Default: {LANDMARKS_DIR}"
+    )
+    parser.add_argument(
+        "--labels_csv", type=str, default=LABELS_CSV,
+        help=f"Output CSV path. Default: {LABELS_CSV}"
+    )
+    args = parser.parse_args()
+
+    df = build_real_dataset(
+        output_landmarks_dir=args.landmarks_dir,
+        labels_csv=args.labels_csv,
+        include_50_only=(args.subset == 50),
+        max_samples=args.max_samples,
+        force_redownload=args.force_redownload,
+    )
+
+    print(f"\nDataset ready. Next step: run pack_and_split_dataset() in build_dataset.py")
+    print(f"  or run:  python src/preprocessing/run_pipeline.py")
