@@ -103,7 +103,24 @@ streamlit run src/app/streamlit_app.py
 
 ## 📊 Results Summary
 
-| Model Architecture | Input Shape | Val Accuracy | Test Accuracy | Checkpoint Size |
+> ⚠️ **Data Quality Note**: An earlier version of this README reported 94.2% / 91.9% accuracy. Those numbers were computed on partially mislabeled and partially synthetic data and have been **retracted**. The numbers below are from the corrected, 100%-real, 193-sample dataset. See [reports/final_report.md](reports/final_report.md) Section 6.3 for the full data quality fix writeup.
+
+**Dataset**: 193 real ISL signer videos, 11 classes — 135 train / 29 val / 29 test (all source = "real").
+
+| Model Architecture | Input Shape | Val Accuracy | Test Accuracy | Params |
 | :--- | :--- | :--- | :--- | :--- |
-| **2-Layer BiLSTM** | `(Batch, 45, 258)` | 94.2% | 93.6% | ~3.8 MB |
-| **Transformer Encoder** | `(Batch, 45, 258)` | 92.8% | 91.9% | ~4.2 MB |
+| **2-Layer BiLSTM** | `(Batch, 45, 258)` | 31.0% | 31.0% | 4.2M |
+| **Transformer Encoder** | `(Batch, 45, 258)` | 48.3% | 34.5% | 2.2M |
+
+**Root cause of low accuracy**: avg. ~12 real training samples per class after the 70/15/15 split. Classes with distinct hand shapes (Time, Hello) score well; visually similar pairs (Morning/Afternoon/Evening) remain confused. Collecting ≥50 samples per class is the primary next step.
+
+### ✅ Data Integrity — `tools/validate_dataset.py`
+
+Run before any retraining to catch labeling bugs automatically:
+
+```bash
+python tools/validate_dataset.py --min-samples 10
+# All checks passed — dataset is clean and ready for training.
+```
+
+Checks: per-class counts · source audit (blocks synthetic) · cross-label cosine-similarity duplicates · category-folder-name guard.

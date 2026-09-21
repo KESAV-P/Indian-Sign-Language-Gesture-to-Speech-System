@@ -53,11 +53,76 @@ RAW_VIDEO_DIR = os.path.join(PROJECT_ROOT, "data", "raw", "include")
 LANDMARKS_DIR = os.path.join(PROJECT_ROOT, "data", "landmarks")
 LABELS_CSV    = os.path.join(PROJECT_ROOT, "data", "splits", "labels.csv")
 
+# Folder names that are CATEGORY buckets, not actual ISL sign labels.
+# Videos inside these folders must have their label derived from the filename
+# prefix instead.  Add any future category-level folder names here.
+CATEGORY_FOLDER_NAMES: set = {
+    "greetings",
+    "include",
+    "days_and_time",
+    "days and time",
+    "electronics",
+    "food",
+    "numbers",
+    "colors",
+    "colours",
+    "family",
+    "animals",
+    "body",
+    "actions",
+    "raw",          # safety: never label from a top-level raw/ folder
+}
+
+# Pattern that matches a video-camera ID suffix at the END of a filename stem,
+# e.g. "_MVI_0043", "_0043", "_ (2)", "_ (1)", "_MVI_9914"
+# Anything after this pattern (and the pattern itself) is stripped.
+_VIDEO_ID_SUFFIX_RE = re.compile(
+    r"[_\s]+(?:MVI[_\s]+)?[0-9]+(?:[_\s]*\([0-9]+\))?$",
+    re.IGNORECASE,
+)
+
 
 def clean_label(label: str) -> str:
     """Clean label: strip leading numeric indices, title-case."""
     cleaned = re.sub(r"^\d+[\.\-\_\s]+", "", label).strip()
     return cleaned.title() if cleaned else label.strip()
+
+
+def _label_from_filename(fname: str) -> Optional[str]:
+    """
+    Try to extract an ISL word label from a video filename.
+
+    Handles two filename conventions found in the INCLUDE dataset:
+
+    1. Word-prefixed  : "Alright_MVI_0043.MOV"  -> "Alright"
+                        "Good_Morning_MVI_0042.MOV" -> "Good Morning"
+                        "Good_afternoon_MVI_0050_ (2).MOV" -> "Good Afternoon"
+    2. Bare camera IDs: "MVI_0029.MOV"           -> None  (fall back to folder)
+
+    Steps:
+      a) Strip file extension.
+      b) Strip the trailing camera/sequence ID (_MVI_NNNN or just _NNNN).
+      c) If nothing is left (bare MVI_* filenames), return None.
+      d) Replace underscores with spaces, title-case, and return.
+    """
+    stem = os.path.splitext(fname)[0]          # remove extension
+    # Strip trailing video-ID suffix
+    candidate = _VIDEO_ID_SUFFIX_RE.sub("", stem).strip()
+    # If the candidate still starts with "MVI" it's a bare camera filename
+    if not candidate or re.match(r"^MVI\b", candidate, re.IGNORECASE):
+        return None
+    # Replace underscores/hyphens with spaces, clean numeric prefix, title-case
+    candidate = candidate.replace("_", " ").replace("-", " ")
+    candidate = re.sub(r"^\d+[.\s]+", "", candidate).strip()
+    return candidate.title() if candidate else None
+
+
+def _is_category_folder(folder_name: str) -> bool:
+    """
+    Return True if `folder_name` is a category-level bucket name rather than
+    an actual ISL sign word.  Matching is case-insensitive.
+    """
+    return folder_name.strip().lower() in CATEGORY_FOLDER_NAMES
 
 
 # ---------------------------------------------------------------------------
@@ -346,21 +411,75 @@ def _extract_landmarks_from_directory(
     max_samples: Optional[int] = None,
 ) -> List[Dict]:
     """
-    Walk a directory of videos (class_name/video.mp4 structure),
-    run LandmarkExtractor on each, and save .npy files.
+    Walk a directory of videos and extract MediaPipe landmarks.
+
+    Label resolution strategy (in priority order):
+      1. If the immediate parent folder name is a KNOWN CATEGORY BUCKET
+         (e.g. "Greetings", "Electronics") — derive the label from the
+         FILENAME PREFIX using _label_from_filename().
+      2. If _label_from_filename() returns None for that file (bare MVI_*
+         filenames) — fall back to the GRANDPARENT folder name, which is
+         typically the word-level subfolder (e.g. "48. Hello").
+      3. Otherwise — use the cleaned parent folder name directly.
+
+    This guarantees that category-level folder names ("Greetings", etc.)
+    never become class labels in the output CSV.
 
     Returns list of record dicts.
     """
     os.makedirs(output_dir, exist_ok=True)
 
-    # Collect all video files
-    video_files = []
+    # Collect all video files with resolved labels
+    video_files: List[tuple] = []
+    category_label_warnings: set = set()
+
     for root, _, files in os.walk(raw_dir):
+        parent_folder = os.path.basename(root)
+        grandparent_folder = os.path.basename(os.path.dirname(root))
+
         for fname in files:
-            if fname.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
-                raw_label = os.path.basename(root)
-                clean = clean_label(raw_label)
-                video_files.append((os.path.join(root, fname), clean, fname))
+            if not fname.lower().endswith((".mp4", ".avi", ".mov", ".mkv")):
+                continue
+
+            full_path = os.path.join(root, fname)
+
+            if _is_category_folder(parent_folder):
+                # ── Strategy 1: derive label from filename prefix ─────────
+                label_from_fn = _label_from_filename(fname)
+                if label_from_fn:
+                    label = label_from_fn
+                else:
+                    # ── Strategy 2: fall back to grandparent folder name ──
+                    label = clean_label(grandparent_folder)
+                    if _is_category_folder(grandparent_folder):
+                        # Both parent and grandparent are category folders —
+                        # skip this file, we cannot determine its label.
+                        print(
+                            f"  [SKIP] Cannot determine label for {full_path} "
+                            f"(both parent '{parent_folder}' and grandparent "
+                            f"'{grandparent_folder}' are category folders)"
+                        )
+                        continue
+                if parent_folder not in category_label_warnings:
+                    print(
+                        f"  [INFO] Folder '{parent_folder}' is a category bucket — "
+                        f"labels derived from filename prefixes."
+                    )
+                    category_label_warnings.add(parent_folder)
+            else:
+                # ── Strategy 3: use the parent folder name directly ───────
+                label = clean_label(parent_folder)
+
+            # Final guard: if after all resolution the label is still a
+            # category name, refuse to add it.
+            if _is_category_folder(label.lower()):
+                print(
+                    f"  [SKIP] Resolved label '{label}' for {fname} is still a "
+                    f"category-level name — skipping to avoid mislabeling."
+                )
+                continue
+
+            video_files.append((full_path, label, fname))
 
     if not video_files:
         print(f"[WARN] No video files found in {raw_dir}")
@@ -371,6 +490,11 @@ def _extract_landmarks_from_directory(
 
     print(f"Found {len(video_files)} real human ISL video files in {raw_dir}")
     print(f"Extracting MediaPipe landmarks (258 features/frame, {SEQ_LEN} frames/video)...")
+
+    # Show label distribution before extraction
+    from collections import Counter
+    label_dist = Counter(lbl for _, lbl, _ in video_files)
+    print(f"Label distribution: {dict(sorted(label_dist.items()))}")
 
     extractor = LandmarkExtractor()
     records = []
@@ -389,7 +513,7 @@ def _extract_landmarks_from_directory(
                 "npy_path": npy_save_path,
                 "frames": SEQ_LEN,
                 "features": TOTAL_FEATURES,
-                "source": "local_video",
+                "source": "real",
             })
             continue
 
@@ -402,10 +526,10 @@ def _extract_landmarks_from_directory(
                 "npy_path": npy_save_path,
                 "frames": SEQ_LEN,
                 "features": TOTAL_FEATURES,
-                "source": "local_video",
+                "source": "real",
             })
 
-            if (idx + 1) % 50 == 0:
+            if (idx + 1) % 20 == 0:
                 print(f"  [{idx+1}/{len(video_files)}] Processed {label}/{fname}")
 
         except Exception as e:
@@ -461,28 +585,26 @@ def build_real_dataset(
         print(f"\n✓ Found {len(existing_npy)} existing landmark .npy files in {output_landmarks_dir}")
         print("  (Use --force_redownload to re-extract from scratch)")
 
-        # Try to load existing labels CSV
+        # Try to load existing labels CSV — but validate it before returning
         if os.path.exists(labels_csv):
             df = pd.read_csv(labels_csv)
-            print(f"  Loaded {len(df)} records from existing {labels_csv}")
-            print(f"  Classes: {sorted(df['label'].unique())}")
-            return df
-        else:
-            # Rebuild CSV from existing .npy files
-            # Filename format: <label>_<video_id>_<idx>.npy
-            print("  Rebuilding labels.csv from existing .npy files...")
-            for npy_path in existing_npy:
-                parts = npy_path.stem.split("_")
-                # Best-effort label extraction from filename
-                label = parts[0].replace("-", " ").title() if parts else "Unknown"
-                all_records.append({
-                    "video_id": npy_path.stem,
-                    "label": label,
-                    "npy_path": str(npy_path),
-                    "frames": SEQ_LEN,
-                    "features": TOTAL_FEATURES,
-                    "source": "existing_npy",
-                })
+            # Guard: refuse to silently return a stale CSV with bad source tags
+            # or category-level labels.  Let caller decide what to do.
+            non_real = df[~df["source"].isin(["real", "include_hf"])] if "source" in df.columns else pd.DataFrame()
+            category_rows = df[df["label"].str.lower().isin(CATEGORY_FOLDER_NAMES)] if "label" in df.columns else pd.DataFrame()
+            if not non_real.empty or not category_rows.empty:
+                print(
+                    f"  [WARN] Existing labels.csv has {len(non_real)} non-real rows "
+                    f"and {len(category_rows)} category-labeled rows.\n"
+                    f"  Re-running extraction to fix stale labels.\n"
+                    f"  (Pass --force_redownload to also re-extract existing .npy files.)"
+                )
+                # Don't return stale CSV — fall through to re-extraction
+            else:
+                print(f"  Loaded {len(df)} records from existing {labels_csv}")
+                print(f"  Classes: {sorted(df['label'].unique())}")
+                return df
+        # else: no CSV yet — fall through to build from scratch
 
     # ------------------------------------------------------------------
     # Step 1: Process any local Greetings videos

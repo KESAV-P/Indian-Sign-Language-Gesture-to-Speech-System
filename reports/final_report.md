@@ -9,7 +9,7 @@
 ---
 
 ## 📄 Abstract
-Sign language recognition systems play a fundamental role in facilitating accessible communication between deaf/hard-of-hearing individuals and non-signers. While American Sign Language (ASL) has received extensive research attention and open-source tooling, **Indian Sign Language (ISL)** remains comparatively underexplored despite India having one of the world's largest deaf populations. This project presents **ISL-Speak**, an end-to-end Indian Sign Language gesture-to-speech system. Instead of processing computationally expensive 3D video tensors, ISL-Speak employs **MediaPipe Holistic** to extract 258 spatial keypoint features per video frame across pose and hand landmarks. Sequences of $T=45$ frames are classified using PyTorch-based **Bidirectional Long Short-Term Memory (BiLSTM)** and **Transformer Encoder** networks. Recognized gestures are accumulated through a rolling majority-voting anti-flicker sentence buffer and synthesized into audible speech using a dual offline/online Text-to-Speech (TTS) engine. Evaluated on gesture sequences, the BiLSTM classifier achieved a validation accuracy of **94.2%** (100% on synthetic benchmarks), providing a fast, lightweight, and real-time capable solution suitable for consumer hardware deployment.
+Sign language recognition systems play a fundamental role in facilitating accessible communication between deaf/hard-of-hearing individuals and non-signers. While American Sign Language (ASL) has received extensive research attention and open-source tooling, **Indian Sign Language (ISL)** remains comparatively underexplored despite India having one of the world's largest deaf populations. This project presents **ISL-Speak**, an end-to-end Indian Sign Language gesture-to-speech system. Instead of processing computationally expensive 3D video tensors, ISL-Speak employs **MediaPipe Holistic** to extract 258 spatial keypoint features per video frame across pose and hand landmarks. Sequences of $T=45$ frames are classified using PyTorch-based **Bidirectional Long Short-Term Memory (BiLSTM)** and **Transformer Encoder** networks. Recognized gestures are accumulated through a rolling majority-voting anti-flicker sentence buffer and synthesized into audible speech using a dual offline/online Text-to-Speech (TTS) engine. Trained and evaluated on **193 real human signer videos** (11 ISL classes from the AI4Bharat INCLUDE dataset), the Transformer achieved **48.3% validation accuracy** and the BiLSTM **31.0%** on the corrected dataset — honest numbers that reflect the real challenge of limited labelled ISL data, following a data quality audit that caught and fixed a systematic mislabeling bug (see Section 6.3).  These baselines set a clear trajectory for improvement via additional real data collection.
 
 ---
 
@@ -118,12 +118,49 @@ Accepted words are appended to an active sentence buffer and dispatched to `TTSE
 
 ### 6.2 Comparative Model Performance
 
-| Model Architecture | Total Parameters | Trainable Parameters | Validation Accuracy | Training Time (Epochs) |
-| :--- | :--- | :--- | :--- | :--- |
-| **SignLSTMClassifier (BiLSTM)** | 795,146 | 795,146 | **94.2%** | 10 epochs |
-| **SignTransformerClassifier** | 635,018 | 635,018 | **91.9%** | 10 epochs |
+> **Note**: All numbers below are computed on the corrected real dataset after the data quality fix described in Section 6.3. Earlier draft figures (94.2% / 91.9%) were measured on partially synthetic and mislabeled data and have been retracted.
 
-*Discussion*: The BiLSTM architecture outperformed the Transformer Encoder on gesture sequence classification. Because sign language gestures consist of strong directional temporal trajectories (e.g., sweeping hand movements), the explicit recurrent state in BiLSTM effectively models frame-to-frame momentum compared to self-attention over short sequences ($T=45$).
+**Dataset split** (after cleaning): 193 real samples, 11 ISL classes — 135 train / 29 val / 29 test.
+
+| Model Architecture | Total Parameters | Val Accuracy | Test Accuracy | Best Epoch (early stop) |
+| :--- | :--- | :--- | :--- | :--- |
+| **SignLSTMClassifier (BiLSTM)** | 4,216,331 | **31.0%** (9/29) | **31.0%** (9/29) | Epoch 42 / 150 |
+| **SignTransformerClassifier** | 2,189,067 | **48.3%** (14/29) | **34.5%** (10/29) | Epoch 37 / 150 |
+
+**Per-class test metrics (Transformer, best model):**
+
+| Class | Precision | Recall | F1 | Support |
+|:---|:---:|:---:|:---:|:---:|
+| Afternoon | 50.0% | 50.0% | 50.0% | 2 |
+| Alright | 0.0% | 0.0% | 0.0% | 3 |
+| Evening | 33.3% | 50.0% | 40.0% | 2 |
+| Good Afternoon | 33.3% | 25.0% | 28.6% | 4 |
+| Good Morning | 0.0% | 0.0% | 0.0% | 3 |
+| Hello | 33.3% | 100.0% | 50.0% | 3 |
+| How Are You | 25.0% | 33.3% | 28.6% | 3 |
+| Morning | 0.0% | 0.0% | 0.0% | 2 |
+| Night | 100.0% | 50.0% | 66.7% | 2 |
+| Second | 0.0% | 0.0% | 0.0% | 3 |
+| Time | 100.0% | 100.0% | 100.0% | 2 |
+
+*Discussion*: The low accuracy is expected given the extremely small training set (avg. ~12 samples per class after the 70/15/15 split). Classes with low within-class variability (Time, Night) and those with distinct hand configurations (Hello) are recognized well; visually similar signs (Morning/Afternoon/Evening, Alright/How Are You) remain confused. This is a data volume problem, not an architecture problem — the model fit curves show the models are underfitting (validation loss is much higher than random chance at epoch 1 and stays high throughout), which is a direct consequence of having 12 training samples per class. Adding ≥50 real samples per class is projected to significantly improve accuracy.
+
+### 6.3 Data Quality Fixes
+
+**The Greetings Mislabeling Bug (discovered and fixed August 2026)**
+
+During a data integrity audit, a systematic mislabeling error was found in `data/landmarks/`: 106 `.npy` files (the entire Greetings subfolder's worth of videos) were labeled `"Greetings"` instead of their actual sign classes (`Hello`, `Alright`, `Good Morning`, `Good Afternoon`, `How Are You`). This occurred because a previous version of the extraction pipeline derived the class label from the **parent folder name** (`data/raw/Greetings/`) rather than the **subfolder name** (`data/raw/Greetings/48. Hello/`).
+
+The bug was caught by `tools/validate_dataset.py` (Check 3: cosine similarity), which flagged 28 cross-label near-duplicate pairs (cosine sim > 0.999) between `"Hello"` files and `"Greetings"` files — the same physical video was extracting the same MediaPipe features twice under two different labels.
+
+**Impact before the fix**: The 106 mislabeled samples would have trained the model to predict `"Greetings"` for 5 distinct signs and simultaneously trained it that those same signs are 5 other classes, creating a direct contradiction in the training signal.
+
+**Fix applied**:
+1. `_extract_landmarks_from_directory()` in `download_include.py` now uses a priority-ordered label resolution strategy: filename-prefix stripping → grandparent folder → parent folder, with a hard `CATEGORY_FOLDER_NAMES` blocklist to prevent category-bucket names from becoming class labels.
+2. All 106 stale mislabeled `.npy` files were deleted and re-extracted with correct labels.
+3. `tools/validate_dataset.py` was written to permanently guard against this class of error in future pipeline runs.
+
+The old accuracy numbers (94.2% / 91.9%) were computed on the pre-fix, partially mislabeled dataset and are no longer valid. The numbers in Section 6.2 are the correct, honest baselines.
 
 ---
 
