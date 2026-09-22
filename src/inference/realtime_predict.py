@@ -47,8 +47,8 @@ class RealtimeGesturePredictor:
         checkpoint_path: str = "checkpoints/best_lstm_model.pt",
         mapping_json: str = "data/splits/class_index_to_label.json",
         model_type: str = "lstm",
-        confidence_threshold: float = 0.45,
-        window_stride: int = 2,
+        confidence_threshold: float = 0.60,
+        window_stride: int = 3,
         enable_tts: bool = True,
     ):
         self.seq_len = SEQ_LEN
@@ -109,9 +109,9 @@ class RealtimeGesturePredictor:
         # min_confidence matched to confidence_threshold so borderline
         # predictions (e.g. 0.45–0.50) are not silently discarded by the buffer.
         self.buffer = SentenceBuffer(
-            window_size=2,           # 2 consecutive model observations
-            min_confidence=0.35,     # accept at 35%+ confidence (model scores ~35-50%)
-            min_frequency=2,         # 2 out of 2 must agree
+            window_size=4,           # 4 consecutive model observations
+            min_confidence=0.60,     # accept at 60%+ confidence (prevents hallucinations)
+            min_frequency=3,         # 3 out of 4 must agree
             repeat_cooldown=2,       # same word needs 2 different words between repeats
         )
         self.tts = TTSEngine() if enable_tts else None

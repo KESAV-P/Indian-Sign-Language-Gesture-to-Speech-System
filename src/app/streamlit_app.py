@@ -200,7 +200,7 @@ st.markdown(
 )
 
 model_choice = "Transformer"
-confidence_threshold = 0.35
+confidence_threshold = 0.60
 
 controls = st.columns([1, 1, 1])
 with controls[0]:
